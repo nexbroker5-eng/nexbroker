@@ -82,7 +82,7 @@ var FOREX_PAIRS = ['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD','
 async function fetchCryptoPrices(pricesObj) {
   try {
     var ids = Object.values(CRYPTO_SYMBOLS).join(',');
-    var r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd');
+    var r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd&_=' + Date.now());
     if (!r.ok) return;
     var data = await r.json();
     Object.keys(CRYPTO_SYMBOLS).forEach(function(sym) {
@@ -94,7 +94,7 @@ async function fetchCryptoPrices(pricesObj) {
 
 async function fetchForexPrices(pricesObj) {
   try {
-    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD');
+    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD?_=' + Date.now());
     if (!r.ok) return;
     var data = await r.json();
     if (!data.conversion_rates) return;
