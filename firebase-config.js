@@ -59,19 +59,80 @@ function getInstrument(symbol) {
 // to avoid Firestore invalid path errors.
 // The 'symbol' field stores the original symbol (e.g. BTC/USD).
 // ============================================================
-async function loadLivePrices(pricesObj) {
+
+// ── LIVE PRICE FETCHING (direct from APIs, no admin middleman) ──
+// Crypto: CoinGecko (free, no key) — refreshes every 60 seconds
+// Forex:  ExchangeRate-API (free key) — refreshes every 60 minutes
+// Commodities: static default prices (no free API available)
+
+var EXCHANGE_RATE_KEY = '58ca99f219907848a1573eee';
+
+var CRYPTO_SYMBOLS = {
+  'BTC/USD':  'bitcoin',
+  'ETH/USD':  'ethereum',
+  'BNB/USD':  'binancecoin',
+  'SOL/USD':  'solana',
+  'XRP/USD':  'ripple',
+  'ADA/USD':  'cardano',
+  'AVAX/USD': 'avalanche-2'
+};
+
+var FOREX_PAIRS = ['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD','EUR/GBP','NZD/USD'];
+
+async function fetchCryptoPrices(pricesObj) {
   try {
-    var snap = await db.collection('prices').get();
-    snap.forEach(function(d) {
-      var data = d.data();
-      var sym = data.symbol || d.id.replace('-', '/');
-      if (data.price) pricesObj[sym] = data.price;
+    var ids = Object.values(CRYPTO_SYMBOLS).join(',');
+    var r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd');
+    if (!r.ok) return;
+    var data = await r.json();
+    Object.keys(CRYPTO_SYMBOLS).forEach(function(sym) {
+      var id = CRYPTO_SYMBOLS[sym];
+      if (data[id] && data[id].usd) pricesObj[sym] = parseFloat(data[id].usd);
     });
-  } catch(e) {}
-  // Fallback to defaults for anything still missing
+  } catch(e) { console.error('CoinGecko fetch error:', e); }
+}
+
+async function fetchForexPrices(pricesObj) {
+  try {
+    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD');
+    if (!r.ok) return;
+    var data = await r.json();
+    if (!data.conversion_rates) return;
+    var rates = data.conversion_rates;
+    // Convert each pair relative to USD
+    if (rates['EUR']) pricesObj['EUR/USD'] = parseFloat((1 / rates['EUR']).toFixed(5));
+    if (rates['GBP']) pricesObj['GBP/USD'] = parseFloat((1 / rates['GBP']).toFixed(5));
+    if (rates['JPY']) pricesObj['USD/JPY'] = parseFloat(rates['JPY'].toFixed(3));
+    if (rates['CHF']) pricesObj['USD/CHF'] = parseFloat(rates['CHF'].toFixed(5));
+    if (rates['AUD']) pricesObj['AUD/USD'] = parseFloat((1 / rates['AUD']).toFixed(5));
+    if (rates['CAD']) pricesObj['USD/CAD'] = parseFloat(rates['CAD'].toFixed(5));
+    if (rates['EUR'] && rates['GBP']) pricesObj['EUR/GBP'] = parseFloat((rates['GBP'] / rates['EUR']).toFixed(5));
+    if (rates['NZD']) pricesObj['NZD/USD'] = parseFloat((1 / rates['NZD']).toFixed(5));
+  } catch(e) { console.error('ExchangeRate-API fetch error:', e); }
+}
+
+async function loadLivePrices(pricesObj) {
+  // Set commodity defaults first (no live API)
   ALL_INSTRUMENTS.forEach(function(i) {
     if (!pricesObj[i.symbol]) pricesObj[i.symbol] = i.defaultPrice;
   });
+  // Fetch crypto and forex in parallel
+  await Promise.all([fetchCryptoPrices(pricesObj), fetchForexPrices(pricesObj)]);
+}
+
+// Call this once on page load, then set up intervals
+// cryptoCallback and forexCallback are called after each refresh
+function startPriceRefresh(pricesObj, onUpdate) {
+  // Fetch immediately on load
+  loadLivePrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
+  // Crypto: every 60 seconds
+  setInterval(function() {
+    fetchCryptoPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
+  }, 60000);
+  // Forex: every 60 minutes
+  setInterval(function() {
+    fetchForexPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
+  }, 3600000);
 }
 
 // ============================================================
@@ -186,18 +247,8 @@ function toggleTheme() {
 // AUTH GUARDS
 // ============================================================
 function requireAuth(callback) {
-  auth.onAuthStateChanged(async function(user) {
+  auth.onAuthStateChanged(function(user) {
     if (!user) { window.location.href = 'login.html'; return; }
-    try {
-      var snap = await db.collection('users').doc(user.uid).get();
-      if (!snap.exists) {
-        await auth.signOut();
-        window.location.href = 'login.html';
-        return;
-      }
-    } catch(e) {
-      console.error('User existence check failed:', e);
-    }
     callback(user);
   });
 }

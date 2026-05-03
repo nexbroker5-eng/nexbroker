@@ -855,27 +855,21 @@ window.smartsupp||(function(d) {
   ).join('');
   tTrack.innerHTML = tHtml + tHtml;
 
-  async function loadTickerPrices() {
-    try {
-      const snap = await db.collection('prices').get();
-      const live = {};
-      snap.forEach(d => { const data=d.data(); const sym=data.symbol||d.id.replace('-','/'); if(data.price) live[sym]=data.price; });
-      document.querySelectorAll('.nt-tick').forEach((el,idx) => {
-        const inst = tickInsts[idx % tickInsts.length];
-        const p    = live[inst.symbol] || inst.defaultPrice;
-        const diff = ((p - inst.defaultPrice) / inst.defaultPrice * 100).toFixed(2);
-        el.querySelector('.tp').textContent = fmtPrice(p, inst.symbol);
-        const chg = el.querySelector('.tc');
-        chg.textContent = (diff >= 0 ? '+' : '') + diff + '%';
-        chg.className = 'tc ' + (diff >= 0 ? 'tc-up' : 'tc-dn');
-      });
-    } catch(e) {}
-  }
-  loadTickerPrices();
-
   // MARKETS TABLE
   var mktPrices = {};
   ALL_INSTRUMENTS.forEach(i => { mktPrices[i.symbol] = i.defaultPrice; });
+
+  function updateTicker() {
+    document.querySelectorAll('.nt-tick').forEach((el, idx) => {
+      const inst = tickInsts[idx % tickInsts.length];
+      const p    = mktPrices[inst.symbol] || inst.defaultPrice;
+      const diff = ((p - inst.defaultPrice) / inst.defaultPrice * 100).toFixed(2);
+      el.querySelector('.tp').textContent = fmtPrice(p, inst.symbol);
+      const chg = el.querySelector('.tc');
+      chg.textContent = (diff >= 0 ? '+' : '') + diff + '%';
+      chg.className = 'tc ' + (diff >= 0 ? 'tc-up' : 'tc-dn');
+    });
+  }
   var mktDataMap = {
     forex: INSTRUMENTS.forex,
     commodities: INSTRUMENTS.commodities,
@@ -909,10 +903,12 @@ window.smartsupp||(function(d) {
     renderMkt();
   }
   renderMkt();
-  db.collection('prices').onSnapshot(snap => {
-    snap.forEach(d => { const data=d.data(); const sym=data.symbol||d.id.replace('-','/'); if(data.price) mktPrices[sym]=data.price; });
+
+  // Start live price refresh — crypto every 60s, forex every 60min
+  startPriceRefresh(mktPrices, function() {
     renderMkt();
-  }, () => {});
+    updateTicker();
+  });
 
   // TRADINGVIEW CHART
   function loadChart(symbol) {
