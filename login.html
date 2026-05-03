@@ -172,6 +172,13 @@
     document.getElementById('loadingOverlay').style.display = 'flex';
     try {
       const cred = await auth.signInWithEmailAndPassword(email, pass);
+      // Check if user document still exists in Firestore (catches deleted accounts)
+      const userSnap = await db.collection('users').doc(cred.user.uid).get();
+      if (!userSnap.exists) {
+        await auth.signOut();
+        document.getElementById('loadingOverlay').style.display = 'none';
+        return showError('This account no longer exists. Please contact support.');
+      }
       // Check if this user is an admin — if so, redirect to admin panel
       const adminSnap = await db.collection('admins').doc(cred.user.uid).get();
       if (adminSnap.exists) {
@@ -226,6 +233,11 @@
   // If already logged in, redirect appropriately
   auth.onAuthStateChanged(async u => {
     if (!u) return;
+    const userSnap = await db.collection('users').doc(u.uid).get();
+    if (!userSnap.exists) {
+      await auth.signOut();
+      return;
+    }
     const adminSnap = await db.collection('admins').doc(u.uid).get();
     window.location.href = adminSnap.exists ? 'admin.html' : 'dashboard.html';
   });

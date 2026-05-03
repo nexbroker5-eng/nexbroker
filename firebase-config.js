@@ -186,8 +186,18 @@ function toggleTheme() {
 // AUTH GUARDS
 // ============================================================
 function requireAuth(callback) {
-  auth.onAuthStateChanged(function(user) {
+  auth.onAuthStateChanged(async function(user) {
     if (!user) { window.location.href = 'login.html'; return; }
+    try {
+      var snap = await db.collection('users').doc(user.uid).get();
+      if (!snap.exists) {
+        await auth.signOut();
+        window.location.href = 'login.html';
+        return;
+      }
+    } catch(e) {
+      console.error('User existence check failed:', e);
+    }
     callback(user);
   });
 }

@@ -919,7 +919,10 @@
               <div class="ticket-card__subject">${t.subject||'No subject'}</div>
               <div class="ticket-card__meta">${u?.fullName||'Unknown'} &middot; ${u?.email||''} &middot; ${fmtDate(t.createdAt)}</div>
             </div>
-            <span class="badge ${stClass}">${t.status||'open'}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge ${stClass}">${t.status||'open'}</span>
+              <button class="btn btn-sm" style="padding:4px 10px;background:rgba(231,76,60,.1);color:#e74c3c;border:1px solid rgba(231,76,60,.25);border-radius:var(--r-sm);font-size:.72rem;font-weight:600;cursor:pointer;" onclick="deleteTicket('${t.id}')">Delete</button>
+            </div>
           </div>
           <div class="ticket-card__body">${t.message||''}</div>
           ${t.adminReply ? `
@@ -957,6 +960,17 @@
       loadTickets();
     } catch(e) {
       showToast('Error sending reply.','error');
+    }
+  }
+
+  async function deleteTicket(ticketId) {
+    if (!confirm('Are you sure you want to delete this request? This cannot be undone.')) return;
+    try {
+      await db.collection('support').doc(ticketId).delete();
+      showToast('Request deleted successfully.');
+      loadTickets();
+    } catch(e) {
+      showToast('Error deleting request.','error');
     }
   }
 
