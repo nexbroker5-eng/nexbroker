@@ -61,16 +61,12 @@ function getInstrument(symbol) {
 // ============================================================
 
 // ── LIVE PRICE FETCHING — OPTION 2 ──
-// Crypto : CoinGecko  — direct to browser, every 60 seconds (no API limit)
-// Forex  : ExchangeRate-API — Firestore cache, fetch every 30 minutes
-// Commod : Alpha Vantage    — Firestore cache, fetch every 90 minutes
-// One user fetches & saves to Firestore; all others read from Firestore.
+// Crypto     : CoinGecko    — direct to browser,   every 60 seconds
+// Forex      : Yahoo Finance — Firestore cache,     every 60 seconds
+// Commodities: Yahoo Finance — Firestore cache,     every 60 seconds
+// One user fetches and saves to Firestore; all others read from Firestore.
 
-var EXCHANGE_RATE_KEY  = '58ca99f219907848a1573eee';
-var ALPHA_VANTAGE_KEY  = 'SY39LS54KRRP5B3Y';
-
-var FOREX_TTL      = 30 * 60 * 1000;   // 30 minutes in ms
-var COMMODITY_TTL  = 90 * 60 * 1000;   // 90 minutes in ms
+var PRICE_TTL = 60 * 1000; // 60 seconds in ms
 
 var CRYPTO_SYMBOLS = {
   'BTC/USD':  'bitcoin',
@@ -82,7 +78,26 @@ var CRYPTO_SYMBOLS = {
   'AVAX/USD': 'avalanche-2'
 };
 
-// ── CRYPTO: direct CoinGecko call every 60s ──
+var YAHOO_FOREX = {
+  'EUR/USD': 'EURUSD=X',
+  'GBP/USD': 'GBPUSD=X',
+  'USD/JPY': 'USDJPY=X',
+  'USD/CHF': 'USDCHF=X',
+  'AUD/USD': 'AUDUSD=X',
+  'USD/CAD': 'USDCAD=X',
+  'EUR/GBP': 'EURGBP=X',
+  'NZD/USD': 'NZDUSD=X'
+};
+
+var YAHOO_COMMODITIES = {
+  'XAU/USD':  'GC=F',
+  'XAG/USD':  'SI=F',
+  'WTI/USD':  'CL=F',
+  'NGAS/USD': 'NG=F',
+  'XPT/USD':  'PL=F'
+};
+
+// ── CRYPTO: direct CoinGecko, every 60s ──
 async function fetchCryptoPrices(pricesObj) {
   try {
     var ids = Object.values(CRYPTO_SYMBOLS).join(',');
@@ -96,82 +111,68 @@ async function fetchCryptoPrices(pricesObj) {
   } catch(e) { console.error('CoinGecko fetch error:', e); }
 }
 
-// ── FOREX: Option 2 — check Firestore first, fetch API only if stale ──
+// ── YAHOO FINANCE: fetch a batch of symbols ──
+async function fetchYahooPrices(symbolMap) {
+  var tickers = Object.values(symbolMap).join(',');
+  try {
+    var r = await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + encodeURIComponent(tickers) + '&_=' + Date.now());
+    if (!r.ok) return null;
+    var data = await r.json();
+    var quotes = data && data.quoteResponse && data.quoteResponse.result;
+    if (!quotes) return null;
+    var result = {};
+    quotes.forEach(function(q) {
+      // Map Yahoo ticker back to our symbol
+      Object.keys(symbolMap).forEach(function(sym) {
+        if (symbolMap[sym] === q.symbol && q.regularMarketPrice) {
+          result[sym] = parseFloat(q.regularMarketPrice);
+        }
+      });
+    });
+    return result;
+  } catch(e) { console.error('Yahoo Finance fetch error:', e); return null; }
+}
+
+// ── FOREX: Option 2 — Firestore cache, Yahoo Finance source ──
 async function loadForexPrices(pricesObj) {
   try {
-    var snap = await db.collection('forexPrices').doc('latest').get();
     var now  = Date.now();
+    var snap = await db.collection('forexPrices').doc('latest').get();
     if (snap.exists) {
       var saved = snap.data();
       var age   = now - (saved.updatedAt || 0);
-      // Read from Firestore — covers all users while cache is fresh
       Object.keys(saved).forEach(function(k) {
         if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
       });
-      if (age < FOREX_TTL) return; // Still fresh — no API call needed
+      if (age < PRICE_TTL) return; // Still fresh
     }
-    // Cache is stale or missing — this user fetches and saves
-    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD?_=' + now);
-    if (!r.ok) return;
-    var data = await r.json();
-    if (!data.conversion_rates) return;
-    var rates = data.conversion_rates;
-    var toSave = { updatedAt: now };
-    if (rates['EUR']) { toSave['EUR/USD'] = parseFloat((1 / rates['EUR']).toFixed(5)); }
-    if (rates['GBP']) { toSave['GBP/USD'] = parseFloat((1 / rates['GBP']).toFixed(5)); }
-    if (rates['JPY']) { toSave['USD/JPY'] = parseFloat(rates['JPY'].toFixed(3)); }
-    if (rates['CHF']) { toSave['USD/CHF'] = parseFloat(rates['CHF'].toFixed(5)); }
-    if (rates['AUD']) { toSave['AUD/USD'] = parseFloat((1 / rates['AUD']).toFixed(5)); }
-    if (rates['CAD']) { toSave['USD/CAD'] = parseFloat(rates['CAD'].toFixed(5)); }
-    if (rates['EUR'] && rates['GBP']) { toSave['EUR/GBP'] = parseFloat((rates['GBP'] / rates['EUR']).toFixed(5)); }
-    if (rates['NZD']) { toSave['NZD/USD'] = parseFloat((1 / rates['NZD']).toFixed(5)); }
+    // Stale or missing — this user fetches and saves
+    var fetched = await fetchYahooPrices(YAHOO_FOREX);
+    if (!fetched) return;
+    var toSave = Object.assign({ updatedAt: now }, fetched);
+    Object.keys(fetched).forEach(function(k) { pricesObj[k] = fetched[k]; });
     await db.collection('forexPrices').doc('latest').set(toSave);
-    Object.keys(toSave).forEach(function(k) { if (k !== 'updatedAt') pricesObj[k] = toSave[k]; });
   } catch(e) { console.error('Forex price error:', e); }
 }
 
-// ── COMMODITIES: Option 2 — check Firestore first, fetch Alpha Vantage if stale ──
-var COMMODITY_AV_MAP = {
-  'XAU/USD':  'WTI',  // placeholder — overridden below
-};
-
-async function fetchAVCommodity(symbol) {
-  var avFunc = symbol === 'XAU/USD' ? 'GOLD' :
-               symbol === 'XAG/USD' ? 'SILVER' :
-               symbol === 'WTI/USD' ? 'WTI' :
-               symbol === 'NGAS/USD'? 'NATURAL_GAS' : null;
-  if (!avFunc) return null;
-  try {
-    var r = await fetch('https://www.alphavantage.co/query?function=' + avFunc + '&interval=daily&apikey=' + ALPHA_VANTAGE_KEY + '&_=' + Date.now());
-    if (!r.ok) return null;
-    var data = await r.json();
-    // Alpha Vantage commodity response structure
-    var series = data['data'];
-    if (series && series.length > 0) return parseFloat(series[0].value);
-    return null;
-  } catch(e) { return null; }
-}
-
+// ── COMMODITIES: Option 2 — Firestore cache, Yahoo Finance source ──
 async function loadCommodityPrices(pricesObj) {
   try {
-    var snap = await db.collection('commodityPrices').doc('latest').get();
     var now  = Date.now();
+    var snap = await db.collection('commodityPrices').doc('latest').get();
     if (snap.exists) {
       var saved = snap.data();
       var age   = now - (saved.updatedAt || 0);
       Object.keys(saved).forEach(function(k) {
         if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
       });
-      if (age < COMMODITY_TTL) return; // Still fresh
+      if (age < PRICE_TTL) return; // Still fresh
     }
-    // Stale or missing — fetch from Alpha Vantage
-    var commodities = ['XAU/USD', 'XAG/USD', 'WTI/USD', 'NGAS/USD'];
-    var toSave = { updatedAt: now };
-    for (var i = 0; i < commodities.length; i++) {
-      var sym = commodities[i];
-      var price = await fetchAVCommodity(sym);
-      if (price) { toSave[sym] = price; pricesObj[sym] = price; }
-    }
+    // Stale or missing — this user fetches and saves
+    var fetched = await fetchYahooPrices(YAHOO_COMMODITIES);
+    if (!fetched) return;
+    var toSave = Object.assign({ updatedAt: now }, fetched);
+    Object.keys(fetched).forEach(function(k) { pricesObj[k] = fetched[k]; });
     await db.collection('commodityPrices').doc('latest').set(toSave);
   } catch(e) { console.error('Commodity price error:', e); }
 }
@@ -191,18 +192,16 @@ async function loadLivePrices(pricesObj) {
 // ── START PRICE REFRESH: call once on page load ──
 function startPriceRefresh(pricesObj, onUpdate) {
   loadLivePrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  // Crypto: every 60 seconds direct
+  // All sources: every 60 seconds
   setInterval(function() {
     fetchCryptoPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
   }, 60000);
-  // Forex: check every 30 minutes (Firestore handles deduplication)
   setInterval(function() {
     loadForexPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  }, FOREX_TTL);
-  // Commodities: check every 90 minutes
+  }, 60000);
   setInterval(function() {
     loadCommodityPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  }, COMMODITY_TTL);
+  }, 60000);
 }
 
 // ============================================================
