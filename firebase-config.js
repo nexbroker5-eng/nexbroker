@@ -62,8 +62,8 @@ function getInstrument(symbol) {
 
 // ── LIVE PRICE FETCHING — OPTION 2 ──
 // Crypto     : CoinGecko    — direct to browser,   every 60 seconds
-// Forex      : Yahoo Finance — Firestore cache,     every 60 seconds
-// Commodities: Yahoo Finance — Firestore cache,     every 60 seconds
+// Forex      : Frankfurter  — Firestore cache,     every 60 seconds
+// Commodities: Static default prices (no reliable free API available)
 // One user fetches and saves to Firestore; all others read from Firestore.
 
 var PRICE_TTL = 60 * 1000; // 60 seconds in ms
@@ -76,25 +76,6 @@ var CRYPTO_SYMBOLS = {
   'XRP/USD':  'ripple',
   'ADA/USD':  'cardano',
   'AVAX/USD': 'avalanche-2'
-};
-
-var YAHOO_FOREX = {
-  'EUR/USD': 'EURUSD=X',
-  'GBP/USD': 'GBPUSD=X',
-  'USD/JPY': 'USDJPY=X',
-  'USD/CHF': 'USDCHF=X',
-  'AUD/USD': 'AUDUSD=X',
-  'USD/CAD': 'USDCAD=X',
-  'EUR/GBP': 'EURGBP=X',
-  'NZD/USD': 'NZDUSD=X'
-};
-
-var YAHOO_COMMODITIES = {
-  'XAU/USD':  'GC=F',
-  'XAG/USD':  'SI=F',
-  'WTI/USD':  'CL=F',
-  'NGAS/USD': 'NG=F',
-  'XPT/USD':  'PL=F'
 };
 
 // ── CRYPTO: direct CoinGecko, every 60s ──
@@ -111,29 +92,7 @@ async function fetchCryptoPrices(pricesObj) {
   } catch(e) { console.error('CoinGecko fetch error:', e); }
 }
 
-// ── YAHOO FINANCE: fetch a batch of symbols ──
-async function fetchYahooPrices(symbolMap) {
-  var tickers = Object.values(symbolMap).join(',');
-  try {
-    var r = await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + encodeURIComponent(tickers) + '&_=' + Date.now());
-    if (!r.ok) return null;
-    var data = await r.json();
-    var quotes = data && data.quoteResponse && data.quoteResponse.result;
-    if (!quotes) return null;
-    var result = {};
-    quotes.forEach(function(q) {
-      // Map Yahoo ticker back to our symbol
-      Object.keys(symbolMap).forEach(function(sym) {
-        if (symbolMap[sym] === q.symbol && q.regularMarketPrice) {
-          result[sym] = parseFloat(q.regularMarketPrice);
-        }
-      });
-    });
-    return result;
-  } catch(e) { console.error('Yahoo Finance fetch error:', e); return null; }
-}
-
-// ── FOREX: Option 2 — Firestore cache, Yahoo Finance source ──
+// ── FOREX: Frankfurter — no key, no CORS issues, open public API ──
 async function loadForexPrices(pricesObj) {
   try {
     var now  = Date.now();
@@ -144,63 +103,50 @@ async function loadForexPrices(pricesObj) {
       Object.keys(saved).forEach(function(k) {
         if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
       });
-      if (age < PRICE_TTL) return; // Still fresh
+      if (age < PRICE_TTL) return; // Still fresh — no API call needed
     }
     // Stale or missing — this user fetches and saves
-    var fetched = await fetchYahooPrices(YAHOO_FOREX);
-    if (!fetched) return;
-    var toSave = Object.assign({ updatedAt: now }, fetched);
-    Object.keys(fetched).forEach(function(k) { pricesObj[k] = fetched[k]; });
+    var r = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR,GBP,JPY,CHF,AUD,CAD,NZD&_=' + now);
+    if (!r.ok) return;
+    var data = await r.json();
+    if (!data.rates) return;
+    var rates  = data.rates;
+    var toSave = { updatedAt: now };
+    if (rates.EUR) toSave['EUR/USD'] = parseFloat((1 / rates.EUR).toFixed(5));
+    if (rates.GBP) toSave['GBP/USD'] = parseFloat((1 / rates.GBP).toFixed(5));
+    if (rates.JPY) toSave['USD/JPY'] = parseFloat(rates.JPY.toFixed(3));
+    if (rates.CHF) toSave['USD/CHF'] = parseFloat(rates.CHF.toFixed(5));
+    if (rates.AUD) toSave['AUD/USD'] = parseFloat((1 / rates.AUD).toFixed(5));
+    if (rates.CAD) toSave['USD/CAD'] = parseFloat(rates.CAD.toFixed(5));
+    if (rates.EUR && rates.GBP) toSave['EUR/GBP'] = parseFloat((rates.GBP / rates.EUR).toFixed(5));
+    if (rates.NZD) toSave['NZD/USD'] = parseFloat((1 / rates.NZD).toFixed(5));
     await db.collection('forexPrices').doc('latest').set(toSave);
+    Object.keys(toSave).forEach(function(k) { if (k !== 'updatedAt') pricesObj[k] = toSave[k]; });
   } catch(e) { console.error('Forex price error:', e); }
-}
-
-// ── COMMODITIES: Option 2 — Firestore cache, Yahoo Finance source ──
-async function loadCommodityPrices(pricesObj) {
-  try {
-    var now  = Date.now();
-    var snap = await db.collection('commodityPrices').doc('latest').get();
-    if (snap.exists) {
-      var saved = snap.data();
-      var age   = now - (saved.updatedAt || 0);
-      Object.keys(saved).forEach(function(k) {
-        if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
-      });
-      if (age < PRICE_TTL) return; // Still fresh
-    }
-    // Stale or missing — this user fetches and saves
-    var fetched = await fetchYahooPrices(YAHOO_COMMODITIES);
-    if (!fetched) return;
-    var toSave = Object.assign({ updatedAt: now }, fetched);
-    Object.keys(fetched).forEach(function(k) { pricesObj[k] = fetched[k]; });
-    await db.collection('commodityPrices').doc('latest').set(toSave);
-  } catch(e) { console.error('Commodity price error:', e); }
 }
 
 // ── MAIN LOADER: sets defaults then loads all price sources ──
 async function loadLivePrices(pricesObj) {
+  // Commodities use static defaults — no reliable free API available
   ALL_INSTRUMENTS.forEach(function(i) {
     if (!pricesObj[i.symbol]) pricesObj[i.symbol] = i.defaultPrice;
   });
   await Promise.all([
     fetchCryptoPrices(pricesObj),
-    loadForexPrices(pricesObj),
-    loadCommodityPrices(pricesObj)
+    loadForexPrices(pricesObj)
   ]);
 }
 
 // ── START PRICE REFRESH: call once on page load ──
 function startPriceRefresh(pricesObj, onUpdate) {
   loadLivePrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  // All sources: every 60 seconds
+  // Crypto: every 60 seconds direct
   setInterval(function() {
     fetchCryptoPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
   }, 60000);
+  // Forex: every 60 seconds via Firestore cache
   setInterval(function() {
     loadForexPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  }, 60000);
-  setInterval(function() {
-    loadCommodityPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
   }, 60000);
 }
 
