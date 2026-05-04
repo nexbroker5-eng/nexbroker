@@ -60,12 +60,17 @@ function getInstrument(symbol) {
 // The 'symbol' field stores the original symbol (e.g. BTC/USD).
 // ============================================================
 
-// ── LIVE PRICE FETCHING (direct from APIs, no admin middleman) ──
-// Crypto: CoinGecko (free, no key) — refreshes every 60 seconds
-// Forex:  ExchangeRate-API (free key) — refreshes every 60 minutes
-// Commodities: static default prices (no free API available)
+// ── LIVE PRICE FETCHING — OPTION 2 ──
+// Crypto : CoinGecko  — direct to browser, every 60 seconds (no API limit)
+// Forex  : ExchangeRate-API — Firestore cache, fetch every 30 minutes
+// Commod : Alpha Vantage    — Firestore cache, fetch every 90 minutes
+// One user fetches & saves to Firestore; all others read from Firestore.
 
-var EXCHANGE_RATE_KEY = '58ca99f219907848a1573eee';
+var EXCHANGE_RATE_KEY  = '58ca99f219907848a1573eee';
+var ALPHA_VANTAGE_KEY  = 'SY39LS54KRRP5B3Y';
+
+var FOREX_TTL      = 30 * 60 * 1000;   // 30 minutes in ms
+var COMMODITY_TTL  = 90 * 60 * 1000;   // 90 minutes in ms
 
 var CRYPTO_SYMBOLS = {
   'BTC/USD':  'bitcoin',
@@ -77,8 +82,7 @@ var CRYPTO_SYMBOLS = {
   'AVAX/USD': 'avalanche-2'
 };
 
-var FOREX_PAIRS = ['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD','EUR/GBP','NZD/USD'];
-
+// ── CRYPTO: direct CoinGecko call every 60s ──
 async function fetchCryptoPrices(pricesObj) {
   try {
     var ids = Object.values(CRYPTO_SYMBOLS).join(',');
@@ -92,47 +96,113 @@ async function fetchCryptoPrices(pricesObj) {
   } catch(e) { console.error('CoinGecko fetch error:', e); }
 }
 
-async function fetchForexPrices(pricesObj) {
+// ── FOREX: Option 2 — check Firestore first, fetch API only if stale ──
+async function loadForexPrices(pricesObj) {
   try {
-    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD?_=' + Date.now());
+    var snap = await db.collection('forexPrices').doc('latest').get();
+    var now  = Date.now();
+    if (snap.exists) {
+      var saved = snap.data();
+      var age   = now - (saved.updatedAt || 0);
+      // Read from Firestore — covers all users while cache is fresh
+      Object.keys(saved).forEach(function(k) {
+        if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
+      });
+      if (age < FOREX_TTL) return; // Still fresh — no API call needed
+    }
+    // Cache is stale or missing — this user fetches and saves
+    var r = await fetch('https://v6.exchangerate-api.com/v6/' + EXCHANGE_RATE_KEY + '/latest/USD?_=' + now);
     if (!r.ok) return;
     var data = await r.json();
     if (!data.conversion_rates) return;
     var rates = data.conversion_rates;
-    // Convert each pair relative to USD
-    if (rates['EUR']) pricesObj['EUR/USD'] = parseFloat((1 / rates['EUR']).toFixed(5));
-    if (rates['GBP']) pricesObj['GBP/USD'] = parseFloat((1 / rates['GBP']).toFixed(5));
-    if (rates['JPY']) pricesObj['USD/JPY'] = parseFloat(rates['JPY'].toFixed(3));
-    if (rates['CHF']) pricesObj['USD/CHF'] = parseFloat(rates['CHF'].toFixed(5));
-    if (rates['AUD']) pricesObj['AUD/USD'] = parseFloat((1 / rates['AUD']).toFixed(5));
-    if (rates['CAD']) pricesObj['USD/CAD'] = parseFloat(rates['CAD'].toFixed(5));
-    if (rates['EUR'] && rates['GBP']) pricesObj['EUR/GBP'] = parseFloat((rates['GBP'] / rates['EUR']).toFixed(5));
-    if (rates['NZD']) pricesObj['NZD/USD'] = parseFloat((1 / rates['NZD']).toFixed(5));
-  } catch(e) { console.error('ExchangeRate-API fetch error:', e); }
+    var toSave = { updatedAt: now };
+    if (rates['EUR']) { toSave['EUR/USD'] = parseFloat((1 / rates['EUR']).toFixed(5)); }
+    if (rates['GBP']) { toSave['GBP/USD'] = parseFloat((1 / rates['GBP']).toFixed(5)); }
+    if (rates['JPY']) { toSave['USD/JPY'] = parseFloat(rates['JPY'].toFixed(3)); }
+    if (rates['CHF']) { toSave['USD/CHF'] = parseFloat(rates['CHF'].toFixed(5)); }
+    if (rates['AUD']) { toSave['AUD/USD'] = parseFloat((1 / rates['AUD']).toFixed(5)); }
+    if (rates['CAD']) { toSave['USD/CAD'] = parseFloat(rates['CAD'].toFixed(5)); }
+    if (rates['EUR'] && rates['GBP']) { toSave['EUR/GBP'] = parseFloat((rates['GBP'] / rates['EUR']).toFixed(5)); }
+    if (rates['NZD']) { toSave['NZD/USD'] = parseFloat((1 / rates['NZD']).toFixed(5)); }
+    await db.collection('forexPrices').doc('latest').set(toSave);
+    Object.keys(toSave).forEach(function(k) { if (k !== 'updatedAt') pricesObj[k] = toSave[k]; });
+  } catch(e) { console.error('Forex price error:', e); }
 }
 
+// ── COMMODITIES: Option 2 — check Firestore first, fetch Alpha Vantage if stale ──
+var COMMODITY_AV_MAP = {
+  'XAU/USD':  'WTI',  // placeholder — overridden below
+};
+
+async function fetchAVCommodity(symbol) {
+  var avFunc = symbol === 'XAU/USD' ? 'GOLD' :
+               symbol === 'XAG/USD' ? 'SILVER' :
+               symbol === 'WTI/USD' ? 'WTI' :
+               symbol === 'NGAS/USD'? 'NATURAL_GAS' : null;
+  if (!avFunc) return null;
+  try {
+    var r = await fetch('https://www.alphavantage.co/query?function=' + avFunc + '&interval=daily&apikey=' + ALPHA_VANTAGE_KEY + '&_=' + Date.now());
+    if (!r.ok) return null;
+    var data = await r.json();
+    // Alpha Vantage commodity response structure
+    var series = data['data'];
+    if (series && series.length > 0) return parseFloat(series[0].value);
+    return null;
+  } catch(e) { return null; }
+}
+
+async function loadCommodityPrices(pricesObj) {
+  try {
+    var snap = await db.collection('commodityPrices').doc('latest').get();
+    var now  = Date.now();
+    if (snap.exists) {
+      var saved = snap.data();
+      var age   = now - (saved.updatedAt || 0);
+      Object.keys(saved).forEach(function(k) {
+        if (k !== 'updatedAt' && saved[k]) pricesObj[k] = saved[k];
+      });
+      if (age < COMMODITY_TTL) return; // Still fresh
+    }
+    // Stale or missing — fetch from Alpha Vantage
+    var commodities = ['XAU/USD', 'XAG/USD', 'WTI/USD', 'NGAS/USD'];
+    var toSave = { updatedAt: now };
+    for (var i = 0; i < commodities.length; i++) {
+      var sym = commodities[i];
+      var price = await fetchAVCommodity(sym);
+      if (price) { toSave[sym] = price; pricesObj[sym] = price; }
+    }
+    await db.collection('commodityPrices').doc('latest').set(toSave);
+  } catch(e) { console.error('Commodity price error:', e); }
+}
+
+// ── MAIN LOADER: sets defaults then loads all price sources ──
 async function loadLivePrices(pricesObj) {
-  // Set commodity defaults first (no live API)
   ALL_INSTRUMENTS.forEach(function(i) {
     if (!pricesObj[i.symbol]) pricesObj[i.symbol] = i.defaultPrice;
   });
-  // Fetch crypto and forex in parallel
-  await Promise.all([fetchCryptoPrices(pricesObj), fetchForexPrices(pricesObj)]);
+  await Promise.all([
+    fetchCryptoPrices(pricesObj),
+    loadForexPrices(pricesObj),
+    loadCommodityPrices(pricesObj)
+  ]);
 }
 
-// Call this once on page load, then set up intervals
-// cryptoCallback and forexCallback are called after each refresh
+// ── START PRICE REFRESH: call once on page load ──
 function startPriceRefresh(pricesObj, onUpdate) {
-  // Fetch immediately on load
   loadLivePrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  // Crypto: every 60 seconds
+  // Crypto: every 60 seconds direct
   setInterval(function() {
     fetchCryptoPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
   }, 60000);
-  // Forex: every 60 minutes
+  // Forex: check every 30 minutes (Firestore handles deduplication)
   setInterval(function() {
-    fetchForexPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
-  }, 3600000);
+    loadForexPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
+  }, FOREX_TTL);
+  // Commodities: check every 90 minutes
+  setInterval(function() {
+    loadCommodityPrices(pricesObj).then(function() { if (onUpdate) onUpdate(); });
+  }, COMMODITY_TTL);
 }
 
 // ============================================================

@@ -226,6 +226,58 @@
     openTrades.forEach(function(t) { p += calcPnL(t, prices[t.symbol] || t.entryPrice); });
     refreshStats(p);
     renderOpenTrades();
+    checkSLTP();
+  }
+
+  // ── TP / SL AUTO CLOSE ──
+  var closingTrades = {};  // prevents duplicate close attempts
+  async function checkSLTP() {
+    var tradesToClose = [];
+    openTrades.forEach(function(t) {
+      if (closingTrades[t.id]) return; // already being closed
+      var current = prices[t.symbol];
+      if (!current) return;
+      var hit = null;
+      if (t.takeProfit) {
+        if (t.type === 'BUY'  && current >= t.takeProfit) hit = 'tp';
+        if (t.type === 'SELL' && current <= t.takeProfit) hit = 'tp';
+      }
+      if (!hit && t.stopLoss) {
+        if (t.type === 'BUY'  && current <= t.stopLoss) hit = 'sl';
+        if (t.type === 'SELL' && current >= t.stopLoss) hit = 'sl';
+      }
+      if (hit) tradesToClose.push({ trade: t, reason: hit, price: current });
+    });
+    for (var i = 0; i < tradesToClose.length; i++) {
+      var item = tradesToClose[i];
+      await autoCloseTrade(item.trade, item.reason, item.price);
+    }
+  }
+
+  async function autoCloseTrade(t, reason, exitPrice) {
+    closingTrades[t.id] = true;
+    var pnl = calcPnL(t, exitPrice);
+    var label = reason === 'tp' ? 'Take Profit' : 'Stop Loss';
+    try {
+      await db.collection('trades').doc(t.id).update({
+        status: 'closed',
+        exitPrice: exitPrice,
+        profitLoss: pnl,
+        closedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        closedBy: reason
+      });
+      var nb = (userData.balance || 0) + pnl;
+      await db.collection('users').doc(currentUser.uid).update({ balance: nb });
+      userData.balance = nb;
+      document.getElementById('statBalance').textContent = fmtCurrency(nb);
+      openTrades = openTrades.filter(function(x) { return x.id !== t.id; });
+      showToast(label + ' hit on ' + t.symbol + ' — P&L: ' + fmtCurrency(pnl), pnl >= 0 ? 'success' : 'error');
+      renderOpenTrades();
+      await loadRecentActivity();
+    } catch(e) {
+      console.error('Auto close error:', e);
+      delete closingTrades[t.id];
+    }
   }
 
   function refreshStats(p) {

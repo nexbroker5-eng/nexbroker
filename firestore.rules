@@ -97,5 +97,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Forex prices (Option 2 — any signed-in user can read/write) ─
+    match /forexPrices/{doc} {
+      allow read:  if true;        // shown on landing page
+      allow write: if isSignedIn(); // any user can save fresh fetch
+    }
+
+    // ── Commodity prices (Option 2 — any signed-in user can read/write) ─
+    match /commodityPrices/{doc} {
+      allow read:  if true;        // shown on landing page
+      allow write: if isSignedIn(); // any user can save fresh fetch
+    }
+
   }
 }
