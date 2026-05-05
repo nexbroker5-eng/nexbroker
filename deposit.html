@@ -319,7 +319,7 @@
     // Check KYC status
     try {
       var kycSnap = await db.collection('kyc').doc(user.uid).get();
-      kycApproved = kycSnap.exists && kycSnap.data().status === 'approved';
+      kycApproved = kycSnap.exists && (kycSnap.data().status === 'approved' || kycSnap.data().status === 'verified');
     } catch(e) { kycApproved = false; }
 
     // Load wallet addresses from Firestore (set by admin)
