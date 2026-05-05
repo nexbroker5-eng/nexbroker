@@ -168,8 +168,20 @@
       clearTimeout(t);
       hideLoader();
       checkKycBanner(user.uid);
-      // Start live price refresh — crypto every 60s, forex every 60min
+      // Start live price refresh — crypto every 60s, forex + commodities simulated
       startPriceRefresh(prices, function() { refreshPnL(); });
+      // Resume any active copy trading engines for this user
+      db.collection('copyPositions')
+        .where('userId', '==', user.uid)
+        .where('status', '==', 'active')
+        .get()
+        .then(function(cpSnap) {
+          cpSnap.forEach(function(d) {
+            var c = d.data();
+            startCopyTrading(c.traderName, user.uid, c.allocation, prices);
+          });
+        })
+        .catch(function(e) { console.error('Copy resume error:', e); });
     }).catch(function(e) { clearTimeout(t); hideLoader(); });
   });
 
@@ -256,22 +268,34 @@
 
   async function autoCloseTrade(t, reason, exitPrice) {
     closingTrades[t.id] = true;
-    var pnl = calcPnL(t, exitPrice);
+    var pnl   = calcPnL(t, exitPrice);
     var label = reason === 'tp' ? 'Take Profit' : 'Stop Loss';
     try {
       await db.collection('trades').doc(t.id).update({
-        status: 'closed',
-        exitPrice: exitPrice,
+        status:     'closed',
+        exitPrice:  exitPrice,
         profitLoss: pnl,
-        closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        closedBy: reason
+        closedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        closedBy:   reason
       });
+      // If copy trade, update copy position P&L in Firestore
+      if (t.isCopyTrade && t.traderName) {
+        var cpDocId = currentUser.uid + '_' + t.traderName.replace(/ /g, '_');
+        try {
+          var cpSnap = await db.collection('copyPositions').doc(cpDocId).get();
+          if (cpSnap.exists && cpSnap.data().status === 'active') {
+            var existingPnl = cpSnap.data().pnl || 0;
+            await db.collection('copyPositions').doc(cpDocId).update({ pnl: existingPnl + pnl });
+          }
+        } catch(e) {}
+      }
       var nb = (userData.balance || 0) + pnl;
       await db.collection('users').doc(currentUser.uid).update({ balance: nb });
       userData.balance = nb;
       document.getElementById('statBalance').textContent = fmtCurrency(nb);
       openTrades = openTrades.filter(function(x) { return x.id !== t.id; });
-      showToast(label + ' hit on ' + t.symbol + ' — P&L: ' + fmtCurrency(pnl), pnl >= 0 ? 'success' : 'error');
+      var label2 = t.isCopyTrade ? label + ' hit on ' + t.symbol + ' (' + t.traderName + ') — P&L: ' + fmtCurrency(pnl) : label + ' hit on ' + t.symbol + ' — P&L: ' + fmtCurrency(pnl);
+      showToast(label2, pnl >= 0 ? 'success' : 'error');
       renderOpenTrades();
       await loadRecentActivity();
     } catch(e) {
