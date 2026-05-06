@@ -329,9 +329,10 @@ function startPriceRefresh(pricesObj, onUpdate) {
       if (_simState[sym]) {
         var newPrice = _tickSimPrice(sym);
         if (newPrice) {
+          // Before applying new price, check if it jumps past any open trade TP/SL
+          // If so, the onUpdate callback will handle closing at exact TP/SL price
           pricesObj[sym] = newPrice;
           changed = true;
-          // Store simulated current price with 'sim_' prefix so load can resume from it
           if (forexSyms.indexOf(sym) !== -1)  forexUpdate['sim_' + sym.replace('/', '_')] = newPrice;
           if (commodSyms.indexOf(sym) !== -1) commodUpdate['sim_' + sym.replace('/', '_')] = newPrice;
         }

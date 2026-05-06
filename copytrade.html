@@ -252,15 +252,12 @@
   async function confirmCopy() {
     var amount = parseFloat(document.getElementById('allocInput').value);
     if (!amount || amount < 10) { showToast('Minimum allocation is $10.', 'error'); return; }
-    if (amount > userBalance)   { showToast('Insufficient balance.', 'error'); return; }
     if (!_pendingTraderName)    { closeCopyModal(); return; }
     var name = _pendingTraderName;
     closeCopyModal();
     try {
-      var newBalance = userBalance - amount;
-      await db.collection('users').doc(currentUser.uid).update({ balance: newBalance });
-      userBalance = newBalance;
-      document.getElementById('topbarBalance').textContent = fmtCurrency(userBalance);
+      // No balance deduction — allocation is just a reference for lot sizing
+      // P&L from closed trades updates balance directly
       await db.collection('copyPositions').doc(currentUser.uid + '_' + name.replace(/ /g,'_')).set({
         userId: currentUser.uid, traderName: name, allocation: amount, pnl: 0,
         startedAt: firebase.firestore.FieldValue.serverTimestamp(), status: 'active'
@@ -280,15 +277,10 @@
       await db.collection('copyPositions').doc(currentUser.uid + '_' + name.replace(/ /g,'_')).update({
         status: 'stopped', stoppedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      var alloc  = activeCopies[name] ? activeCopies[name].allocation : 0;
-      var newBal = userBalance + alloc;
-      await db.collection('users').doc(currentUser.uid).update({ balance: newBal });
-      userBalance = newBal;
-      document.getElementById('topbarBalance').textContent = fmtCurrency(userBalance);
       delete activeCopies[name];
       renderTraders();
       renderActiveCopies();
-      showToast('Stopped copying ' + name + '. Allocation returned.');
+      showToast('Stopped copying ' + name + '.');
     } catch(e) { showToast('Error stopping copy trade.', 'error'); }
   }
 

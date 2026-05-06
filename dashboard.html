@@ -107,7 +107,7 @@
   <a href="deposit.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>Deposit</a>
   <a href="withdraw.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Withdraw</a>
   <a href="kyc.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="13" y1="10" x2="19" y2="10"/><line x1="13" y1="14" x2="17" y2="14"/></svg></span>Verify</a>
-  <a href="profile.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>Profile</a>
+  <a href="profile.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>Profile</a>
   <a href="support.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Support</a>
 </div>
 <div class="modal-overlay" id="closeModal" style="display:none;">
@@ -246,19 +246,20 @@
   async function checkSLTP() {
     var tradesToClose = [];
     openTrades.forEach(function(t) {
-      if (closingTrades[t.id]) return; // already being closed
+      if (closingTrades[t.id]) return;
       var current = prices[t.symbol];
       if (!current) return;
-      var hit = null;
+      var hit       = null;
+      var exitPrice = current; // default to current
       if (t.takeProfit) {
-        if (t.type === 'BUY'  && current >= t.takeProfit) hit = 'tp';
-        if (t.type === 'SELL' && current <= t.takeProfit) hit = 'tp';
+        if (t.type === 'BUY'  && current >= t.takeProfit) { hit = 'tp'; exitPrice = t.takeProfit; }
+        if (t.type === 'SELL' && current <= t.takeProfit) { hit = 'tp'; exitPrice = t.takeProfit; }
       }
       if (!hit && t.stopLoss) {
-        if (t.type === 'BUY'  && current <= t.stopLoss) hit = 'sl';
-        if (t.type === 'SELL' && current >= t.stopLoss) hit = 'sl';
+        if (t.type === 'BUY'  && current <= t.stopLoss) { hit = 'sl'; exitPrice = t.stopLoss; }
+        if (t.type === 'SELL' && current >= t.stopLoss) { hit = 'sl'; exitPrice = t.stopLoss; }
       }
-      if (hit) tradesToClose.push({ trade: t, reason: hit, price: current });
+      if (hit) tradesToClose.push({ trade: t, reason: hit, price: exitPrice });
     });
     for (var i = 0; i < tradesToClose.length; i++) {
       var item = tradesToClose[i];
