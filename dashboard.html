@@ -117,6 +117,21 @@
     <div class="modal-footer"><button class="btn btn-ghost" onclick="document.getElementById('closeModal').style.display='none'">Cancel</button><button class="btn btn-danger" onclick="confirmCloseTrade()">Close Trade</button></div>
   </div>
 </div>
+
+<!-- Stop Out Modal -->
+<div class="modal-overlay" id="stopOutModal" style="display:none;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:380px;text-align:center;">
+    <div class="modal-body" style="padding:32px 24px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:rgba(231,76,60,.12);border:2px solid rgba(231,76,60,.3);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3 style="font-size:1.1rem;font-weight:700;color:#e74c3c;margin-bottom:8px;">Account Stopped Out</h3>
+      <p style="font-size:.85rem;color:var(--text-muted);line-height:1.7;margin-bottom:20px;">Your equity has reached zero. All open positions have been closed and your account balance has been set to <strong>$0.00</strong>. Please make a deposit to continue trading.</p>
+      <a href="deposit.html" class="btn btn-primary btn-full" style="margin-bottom:8px;">Make a Deposit</a>
+      <button class="btn btn-ghost btn-full" onclick="document.getElementById('stopOutModal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -234,11 +249,61 @@
   }
 
   function refreshPnL() {
-    var p = 0;
-    openTrades.forEach(function(t) { p += calcPnL(t, prices[t.symbol] || t.entryPrice); });
-    refreshStats(p);
+    var totalUnrealisedPnL = 0;
+    openTrades.forEach(function(t) { totalUnrealisedPnL += calcPnL(t, prices[t.symbol] || t.entryPrice); });
+    refreshStats(totalUnrealisedPnL);
     renderOpenTrades();
     checkSLTP();
+    // ── STOP OUT CHECK ──
+    // Equity = balance + all unrealised P&L
+    // If equity <= 0, close everything and zero the balance
+    var equity = (userData.balance || 0) + totalUnrealisedPnL;
+    if (equity <= 0 && openTrades.length > 0) {
+      triggerStopOut();
+    }
+  }
+
+  var _stoppingOut = false;
+  async function triggerStopOut() {
+    if (_stoppingOut) return;
+    _stoppingOut = true;
+    try {
+      // Close all open trades at current price
+      for (var i = 0; i < openTrades.length; i++) {
+        var t        = openTrades[i];
+        var exitPrice = prices[t.symbol] || t.entryPrice;
+        var pnl       = calcPnL(t, exitPrice);
+        await db.collection('trades').doc(t.id).update({
+          status:     'closed',
+          exitPrice:  exitPrice,
+          profitLoss: pnl,
+          closedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+          closedBy:   'stopout'
+        });
+      }
+      // Stop all copy trading engines
+      try {
+        var cpSnap = await db.collection('copyPositions')
+          .where('userId', '==', currentUser.uid)
+          .where('status', '==', 'active').get();
+        cpSnap.forEach(function(d) {
+          var c = d.data();
+          stopCopyTrading(c.traderName, currentUser.uid);
+          db.collection('copyPositions').doc(d.id).update({ status: 'stopout' });
+        });
+      } catch(e) {}
+      // Zero the balance
+      await db.collection('users').doc(currentUser.uid).update({ balance: 0 });
+      userData.balance = 0;
+      openTrades = [];
+      renderOpenTrades();
+      document.getElementById('statBalance').textContent = fmtCurrency(0);
+      // Show stop out modal
+      document.getElementById('stopOutModal').style.display = 'flex';
+    } catch(e) {
+      console.error('Stop out error:', e);
+      _stoppingOut = false;
+    }
   }
 
   // ── TP / SL AUTO CLOSE ──
