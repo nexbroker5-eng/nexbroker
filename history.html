@@ -97,6 +97,11 @@
   requireAuth(async user=>{
     const uSnap=await db.collection('users').doc(user.uid).get();const ud=uSnap.data();
     document.getElementById('sidebarName').textContent=ud.fullName||'Trader';
+      // Identify user in Smartsupp
+      if (typeof smartsupp === 'function') {
+        smartsupp('name',  ud.fullName || 'Trader');
+        smartsupp('email', ud.email    || '');
+      }
     document.getElementById('sidebarUid').textContent=ud.accountId||'—';
     document.getElementById('sidebarAvatar').textContent=(ud.fullName||'T')[0];
     try{const s=await db.collection('prices').get();s.forEach(d=>{const data=d.data();const sym=data.symbol||d.id.replace('-','/');if(data.price)prices[sym]=data.price;});}catch(e){}

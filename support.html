@@ -13,47 +13,6 @@
     .ticket-item__reply { background:rgba(0,212,170,.07); border:1px solid rgba(0,212,170,.2); border-radius:var(--r-sm); padding:12px; font-size:.84rem; line-height:1.5; }
     .ticket-item__reply-label { font-size:.7rem; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
     .ticket-item__pending { font-size:.82rem; color:var(--text-muted); font-style:italic; }
-
-    /* FAQ — SUPPORT PAGE */
-    .faq-section-title { font-family:var(--font-h); font-size:1rem; font-weight:700; color:var(--text); margin-bottom:6px; }
-    .faq-section-sub { font-size:.82rem; color:var(--text-muted); margin-bottom:22px; }
-    .faq-cat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:4px; }
-    .faq-cat-card {
-      background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
-      padding:18px 16px; cursor:pointer; transition:border-color .18s, box-shadow .18s;
-      display:flex; flex-direction:column; gap:8px;
-    }
-    .faq-cat-card:hover { border-color:var(--accent); box-shadow:0 2px 12px rgba(0,212,170,.1); }
-    .faq-cat-icon { width:36px; height:36px; border-radius:var(--r-sm); background:rgba(0,212,170,.1); display:flex; align-items:center; justify-content:center; color:var(--accent); }
-    .faq-cat-name { font-size:.88rem; font-weight:700; color:var(--text); }
-    .faq-cat-count { font-size:.72rem; color:var(--text-muted); }
-    .faq-cat-arr { font-size:.8rem; color:var(--text-muted); margin-top:auto; }
-
-    /* FAQ detail view */
-    .faq-detail { display:none; }
-    .faq-detail.active { display:block; }
-    .faq-cats-view { display:block; }
-    .faq-cats-view.hidden { display:none; }
-    .faq-back-btn {
-      display:inline-flex; align-items:center; gap:6px; background:none; border:1px solid var(--border);
-      border-radius:var(--r-sm); padding:6px 14px; font-size:.8rem; font-weight:600; color:var(--text-muted);
-      cursor:pointer; margin-bottom:18px; transition:border-color .15s, color .15s;
-    }
-    .faq-back-btn:hover { border-color:var(--accent); color:var(--accent); }
-    .faq-detail-title { font-family:var(--font-h); font-size:.95rem; font-weight:700; color:var(--text); margin-bottom:16px; display:flex; align-items:center; gap:8px; }
-    .faq-detail-title span { color:var(--accent); }
-
-    .sfaq-item { border-bottom:1px solid var(--border-lt); }
-    .sfaq-item:first-child { border-top:1px solid var(--border-lt); }
-    .sfaq-btn { width:100%; background:none; border:none; padding:16px 2px; display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer; text-align:left; }
-    .sfaq-q { font-size:.86rem; font-weight:600; color:var(--text); line-height:1.4; }
-    .sfaq-icon { flex-shrink:0; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; transition:background .2s,border-color .2s; }
-    .sfaq-icon svg { transition:transform .28s; }
-    .sfaq-item.open .sfaq-icon { background:var(--accent); border-color:var(--accent); }
-    .sfaq-item.open .sfaq-icon svg { transform:rotate(45deg); }
-    .sfaq-item.open .sfaq-icon svg path { stroke:var(--bg,#0A1628); }
-    .sfaq-answer { max-height:0; overflow:hidden; transition:max-height .35s ease; }
-    .sfaq-answer-inner { padding:0 2px 16px; font-size:.83rem; color:var(--text-md); line-height:1.75; }
   </style>
   <!-- Google Translate: restore saved language -->
   <script>
@@ -128,12 +87,8 @@
     <div class="page-body">
       <div style="max-width:640px;">
 
-    <div class="topbar"><div class="topbar-title">Support</div></div>
-    <div class="page-body">
-      <div style="max-width:640px;">
-
         <!-- Submit new ticket -->
-        <div class="card" style="margin-bottom:28px;">
+        <div class="card" style="margin-bottom:20px;">
           <div class="card-header"><h3>Submit a Request</h3></div>
           <div class="card-body">
             <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:18px;background:var(--surface-2);padding:12px;border-radius:var(--r-sm);border:1px solid var(--border);">
@@ -150,232 +105,6 @@
             <button class="btn btn-primary btn-full" id="submitTicketBtn" onclick="submitTicket()">Send Message</button>
           </div>
         </div>
-
-        <!-- FAQ SECTION -->
-        <div class="section-title" style="margin-bottom:6px;">Frequently Asked Questions</div>
-        <p class="faq-section-sub">Browse by topic to find quick answers.</p>
-
-        <!-- Category cards view -->
-        <div class="faq-cats-view" id="faqCatsView">
-          <div class="faq-cat-grid">
-
-            <div class="faq-cat-card" onclick="ntOpenFaqCat('getting-started')">
-              <div class="faq-cat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
-              <div class="faq-cat-name">Getting Started</div>
-              <div class="faq-cat-count">3 questions</div>
-              <div class="faq-cat-arr">View →</div>
-            </div>
-
-            <div class="faq-cat-card" onclick="ntOpenFaqCat('trading')">
-              <div class="faq-cat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
-              <div class="faq-cat-name">Trading</div>
-              <div class="faq-cat-count">4 questions</div>
-              <div class="faq-cat-arr">View →</div>
-            </div>
-
-            <div class="faq-cat-card" onclick="ntOpenFaqCat('deposits')">
-              <div class="faq-cat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-              <div class="faq-cat-name">Deposits &amp; Withdrawals</div>
-              <div class="faq-cat-count">4 questions</div>
-              <div class="faq-cat-arr">View →</div>
-            </div>
-
-            <div class="faq-cat-card" onclick="ntOpenFaqCat('security')">
-              <div class="faq-cat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-              <div class="faq-cat-name">Security &amp; Verification</div>
-              <div class="faq-cat-count">3 questions</div>
-              <div class="faq-cat-arr">View →</div>
-            </div>
-
-            <div class="faq-cat-card" onclick="ntOpenFaqCat('account')">
-              <div class="faq-cat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-              <div class="faq-cat-name">Account &amp; Support</div>
-              <div class="faq-cat-count">4 questions</div>
-              <div class="faq-cat-arr">View →</div>
-            </div>
-
-          </div>
-        </div>
-
-        <!-- FAQ Detail Views -->
-
-        <!-- Getting Started -->
-        <div class="faq-detail" id="faq-getting-started">
-          <button class="faq-back-btn" onclick="ntCloseFaqCat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Topics
-          </button>
-          <div class="faq-detail-title"><span>Getting Started</span></div>
-          <div class="sfaq-list">
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What is NexTrade and who is it for?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade is a modern online trading platform designed for both beginners and experienced traders. Whether you are taking your first steps in financial markets or managing an advanced portfolio, NexTrade provides the tools, instruments, and support to help you trade with confidence.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">How do I create an account?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Creating an account is straightforward. Click the "Get Started" button, complete the registration form with your personal details, verify your identity, and fund your account. The entire process takes just a few minutes.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Is NexTrade available in my country?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade is available to traders in most countries worldwide. During registration, you will be informed if there are any restrictions applicable to your region.</div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Trading -->
-        <div class="faq-detail" id="faq-trading">
-          <button class="faq-back-btn" onclick="ntCloseFaqCat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Topics
-          </button>
-          <div class="faq-detail-title"><span>Trading</span></div>
-          <div class="sfaq-list">
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What instruments can I trade on NexTrade?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade offers a wide range of trading instruments including Forex currency pairs, commodities such as Gold, Silver, and Crude Oil, and major cryptocurrencies including Bitcoin, Ethereum, Solana, and more.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What are the spreads on NexTrade?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade offers some of the most competitive spreads in the market. Our spreads start from as low as 0.0 pips on major currency pairs, ensuring you keep more of your profits on every trade.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What is Copy Trading and how does it work?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Copy Trading allows you to automatically replicate the trades of experienced and verified traders on the platform. Simply browse our list of top-performing traders, select the one whose strategy suits your goals, and allocate funds to copy their trades in real time. It is an ideal feature for beginners who want to benefit from expert knowledge while still learning the markets.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What leverage is available?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade offers flexible leverage options depending on the instrument and your account type. Leverage details are clearly displayed when placing a trade. Please note that while leverage can increase potential profits, it also increases risk.</div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Deposits & Withdrawals -->
-        <div class="faq-detail" id="faq-deposits">
-          <button class="faq-back-btn" onclick="ntCloseFaqCat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Topics
-          </button>
-          <div class="faq-detail-title"><span>Deposits &amp; Withdrawals</span></div>
-          <div class="sfaq-list">
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">How do I deposit funds into my account?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Log in to your account and navigate to the Deposit section. Select your preferred payment method, enter the amount, and follow the on-screen instructions. Deposits are typically processed instantly or within a few hours depending on the method used.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What payment methods are accepted?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade supports multiple payment methods including bank transfers, credit and debit cards, and cryptocurrency transfers. Available methods will be displayed in the Deposit section of your account.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">How long do withdrawals take?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Withdrawal requests are reviewed and processed within 24 to 48 business hours. The time it takes for funds to arrive in your account may vary depending on your chosen withdrawal method and your financial institution.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Is there a minimum deposit or withdrawal amount?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Yes. Minimum amounts apply to both deposits and withdrawals depending on your account type and chosen payment method. These details are clearly outlined during the transaction process.</div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Security & Verification -->
-        <div class="faq-detail" id="faq-security">
-          <button class="faq-back-btn" onclick="ntCloseFaqCat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Topics
-          </button>
-          <div class="faq-detail-title"><span>Security &amp; Verification</span></div>
-          <div class="sfaq-list">
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Is my personal and financial information safe?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Yes. NexTrade employs industry-standard encryption and security protocols to protect all personal and financial data. Your information is never shared with unauthorised third parties.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Why do I need to verify my identity (KYC)?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Identity verification is a regulatory requirement designed to protect you and the integrity of the platform. It helps prevent fraud, money laundering, and unauthorised account access. Verification is quick and requires a government-issued ID and proof of address.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">How long does KYC verification take?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">KYC verification is typically completed within 24 hours of submitting the required documents. You will be notified by the platform once your verification is approved.</div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Account & Support -->
-        <div class="faq-detail" id="faq-account">
-          <button class="faq-back-btn" onclick="ntCloseFaqCat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Topics
-          </button>
-          <div class="faq-detail-title"><span>Account &amp; Support</span></div>
-          <div class="sfaq-list">
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Can I have more than one account type?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade offers different account tiers suited to different levels of experience and trading capital. You can upgrade your account type as your trading needs grow.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">What happens if I forget my password?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">On the login page, click "Forgot Password" and enter your registered email address. You will receive a password reset link within minutes.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">How do I contact customer support?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">Our support team is available through the live chat feature on the platform, as well as through the Submit a Request form below. We are committed to responding to all enquiries promptly.</div></div>
-            </div>
-            <div class="sfaq-item">
-              <button class="sfaq-btn" onclick="ntToggleSFaq(this)">
-                <span class="sfaq-q">Does NexTrade charge any account maintenance fees?</span>
-                <span class="sfaq-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-              </button>
-              <div class="sfaq-answer"><div class="sfaq-answer-inner">NexTrade does not charge hidden fees. Any applicable fees are transparently displayed before you confirm any transaction or account action.</div></div>
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-bottom:28px;"></div>
 
         <!-- My tickets -->
         <div class="section-title">My Previous Requests</div>
@@ -404,35 +133,6 @@
 <script src="firebase-config.js"></script>
 <script>
   initTheme();
-
-  // FAQ category navigation
-  function ntOpenFaqCat(cat) {
-    document.getElementById('faqCatsView').classList.add('hidden');
-    document.querySelectorAll('.faq-detail').forEach(function(el) { el.classList.remove('active'); });
-    var detail = document.getElementById('faq-' + cat);
-    if (detail) detail.classList.add('active');
-  }
-  function ntCloseFaqCat() {
-    document.querySelectorAll('.faq-detail').forEach(function(el) { el.classList.remove('active'); });
-    document.querySelectorAll('.sfaq-item.open').forEach(function(el) {
-      el.classList.remove('open');
-      el.querySelector('.sfaq-answer').style.maxHeight = '0';
-    });
-    document.getElementById('faqCatsView').classList.remove('hidden');
-  }
-  function ntToggleSFaq(btn) {
-    var item = btn.parentElement;
-    var answer = item.querySelector('.sfaq-answer');
-    var isOpen = item.classList.contains('open');
-    document.querySelectorAll('.sfaq-item.open').forEach(function(el) {
-      el.classList.remove('open');
-      el.querySelector('.sfaq-answer').style.maxHeight = '0';
-    });
-    if (!isOpen) {
-      item.classList.add('open');
-      answer.style.maxHeight = answer.scrollHeight + 'px';
-    }
-  }
   let currentUser = null;
 
   requireAuth(async user => {
@@ -440,6 +140,11 @@
     const snap = await db.collection('users').doc(user.uid).get();
     const ud = snap.data();
     document.getElementById('sidebarName').textContent   = ud.fullName||'Trader';
+      // Identify user in Smartsupp
+      if (typeof smartsupp === 'function') {
+        smartsupp('name',  ud.fullName || 'Trader');
+        smartsupp('email', ud.email    || '');
+      }
     document.getElementById('sidebarUid').textContent    = ud.accountId||'—';
     document.getElementById('sidebarAvatar').textContent = (ud.fullName||'T')[0].toUpperCase();
     loadMyTickets();
