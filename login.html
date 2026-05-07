@@ -184,7 +184,7 @@
       if (adminSnap.exists) {
         window.location.href = 'admin.html';
       } else {
-        window.location.href = 'dashboard.html';
+        if (typeof smartsupp === 'function') { smartsupp('name', cred.user.displayName || email); smartsupp('email', email); } window.location.href = 'dashboard.html';
       }
     } catch(e) {
       document.getElementById('loadingOverlay').style.display = 'none';

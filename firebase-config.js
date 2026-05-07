@@ -426,28 +426,29 @@ async function _executeCopyTrade(traderName, profile, userId, allocation, prices
     var alignWithTrend = Math.random() < profile.wr;
     var tradeType = alignWithTrend ? (trendDir > 0 ? 'BUY' : 'SELL') : (trendDir > 0 ? 'SELL' : 'BUY');
 
-    // ── Position sizing & TP/SL — engineered for 10% return on TP hit ──
-    // Fixed pip/point distances per instrument for clean 1:1 RR
-    var TP_DIST = {
-      'EUR/USD': 0.0030, 'GBP/USD': 0.0030, 'USD/JPY': 0.30,
-      'USD/CHF': 0.0030, 'AUD/USD': 0.0030, 'USD/CAD': 0.0030,
-      'EUR/GBP': 0.0025, 'NZD/USD': 0.0025,
-      'XAU/USD': 8.0,    'XAG/USD': 0.20,   'WTI/USD': 0.50,
-      'NGAS/USD': 0.05,  'XPT/USD': 6.0
+    // ── Position sizing & TP/SL — 1:3 RR, 10% risk on SL, 30% return on TP ──
+    // SL distance fixed per instrument, TP is 3x the SL distance
+    var SL_DIST = {
+      'EUR/USD': 0.0010, 'GBP/USD': 0.0010, 'USD/JPY': 0.10,
+      'USD/CHF': 0.0010, 'AUD/USD': 0.0010, 'USD/CAD': 0.0010,
+      'EUR/GBP': 0.0008, 'NZD/USD': 0.0008,
+      'XAU/USD': 3.0,    'XAG/USD': 0.07,   'WTI/USD': 0.17,
+      'NGAS/USD': 0.017, 'XPT/USD': 2.0
     };
     var commoditySymbols = ['XAU/USD','XAG/USD','WTI/USD','NGAS/USD','XPT/USD'];
     var isCommodity      = commoditySymbols.indexOf(chosen) !== -1;
-    var tpDist           = TP_DIST[chosen] || 0.0030;
-    var targetProfit     = allocation * 0.10; // 10% of allocation per trade
+    var slDist           = SL_DIST[chosen] || 0.0010;
+    var tpDist           = slDist * 3; // 1:3 RR
+    var targetLoss       = allocation * 0.10; // risk 10% on SL
 
-    // Work backwards: lotSize = targetProfit / (tpDist * multiplier)
+    // Work backwards from SL: lotSize = targetLoss / (slDist * multiplier)
     var multiplier = chosen.includes('JPY') ? 100 : isCommodity ? 1 : 10000;
-    var lotSize    = parseFloat((targetProfit / (tpDist * multiplier)).toFixed(4));
+    var lotSize    = parseFloat((targetLoss / (slDist * multiplier)).toFixed(4));
     if (!lotSize || lotSize <= 0) lotSize = 0.01;
 
-    // 1:1 RR — SL same distance as TP
+    // TP is 3x further — returns 30% of allocation when hit
     var tp = tradeType === 'BUY' ? entryPrice + tpDist : entryPrice - tpDist;
-    var sl = tradeType === 'BUY' ? entryPrice - tpDist : entryPrice + tpDist;
+    var sl = tradeType === 'BUY' ? entryPrice - slDist : entryPrice + slDist;
 
     // Save trade to Firestore
     var tradeDoc = {
