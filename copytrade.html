@@ -30,6 +30,23 @@
     .copy-btn { width:100%; padding:10px; border-radius:var(--r-sm); border:none; font-family:var(--font-b); font-weight:600; font-size:.88rem; cursor:pointer; transition:opacity .18s; background:var(--accent); color:#fff; }
     .copy-btn:hover { opacity:.85; }
     .coming-soon-badge { display:inline-block; background:rgba(255,176,32,.12); color:var(--warning); border:1px solid rgba(255,176,32,.3); border-radius:99px; font-size:.68rem; font-weight:700; padding:2px 9px; letter-spacing:.4px; text-transform:uppercase; margin-left:8px; vertical-align:middle; }
+  /* Copy modal */
+  .copy-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center; }
+  .copy-modal-overlay.active { display:flex; }
+  .copy-modal { background:var(--surface); border-radius:var(--r); padding:24px; width:100%; max-width:380px; margin:16px; box-shadow:0 8px 40px rgba(0,0,0,.18); }
+  .copy-modal h3 { font-size:1rem; font-weight:700; margin-bottom:4px; }
+  .copy-modal .sub { font-size:.8rem; color:var(--text-muted); margin-bottom:18px; }
+  .copy-modal .alloc-input { font-size:1.1rem; font-weight:700; text-align:center; padding:12px; border-radius:var(--r-sm); border:2px solid var(--accent); background:var(--surface-2); color:var(--text); width:100%; margin-bottom:8px; }
+  .copy-modal .alloc-hint { font-size:.75rem; color:var(--text-muted); text-align:center; margin-bottom:18px; }
+  .copy-modal .alloc-presets { display:flex; gap:8px; margin-bottom:18px; }
+  .copy-modal .alloc-preset { flex:1; padding:7px 4px; border:1px solid var(--border); border-radius:var(--r-sm); background:var(--surface-2); font-size:.78rem; font-weight:600; cursor:pointer; color:var(--text); transition:border-color .15s,background .15s; }
+  .copy-modal .alloc-preset:hover { border-color:var(--accent); background:rgba(0,212,170,.07); }
+  /* Active copies section */
+  .active-copy-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:16px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .active-copy-info .name { font-weight:700; font-size:.9rem; }
+  .active-copy-info .meta { font-size:.75rem; color:var(--text-muted); margin-top:2px; }
+  .active-copy-pnl { font-family:var(--font-m); font-weight:700; font-size:.95rem; }
+  .stop-copy-btn { background:rgba(231,76,60,.1); color:#e74c3c; border:1px solid rgba(231,76,60,.25); border-radius:var(--r-sm); padding:6px 12px; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; }
   </style>
   <!-- Google Translate: restore saved language -->
   <script>
@@ -92,8 +109,33 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         A minimum balance of <strong style="margin:0 3px;">$10.00</strong> is required to copy any trader.
       </div>
+      <!-- Active Copies Section -->
+      <div id="activeCopiesSection" style="display:none;margin-bottom:24px;">
+        <div class="section-title" style="margin-bottom:12px;">Your Active Copies</div>
+        <div id="activeCopiesList"></div>
+      </div>
+
+      <div class="section-title" style="margin-bottom:14px;">Available Traders</div>
       <div class="traders-grid" id="tradersGrid"></div>
     </div>
+  </div>
+</div>
+
+<!-- Copy Allocation Modal -->
+<div class="copy-modal-overlay" id="copyModal">
+  <div class="copy-modal">
+    <h3 id="copyModalTitle">Copy Trader</h3>
+    <p class="sub" id="copyModalSub">Set your allocation amount</p>
+    <input type="number" class="alloc-input" id="allocInput" placeholder="00" min="10" step="10"/>
+    <div class="alloc-hint">Minimum 0 &middot; Available: <strong id="allocAvail">--</strong></div>
+    <div class="alloc-presets">
+      <button class="alloc-preset" onclick="setAlloc(50)">0</button>
+      <button class="alloc-preset" onclick="setAlloc(100)">00</button>
+      <button class="alloc-preset" onclick="setAlloc(250)">50</button>
+      <button class="alloc-preset" onclick="setAlloc(500)">00</button>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="confirmCopy()">Start Copying</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="closeCopyModal()">Cancel</button>
   </div>
 </div>
 
@@ -107,17 +149,6 @@
   <a href="support.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Support</a>
 </div>
 
-<!-- Copy Modal -->
-<div class="modal-overlay" id="copyModal" style="display:none;">
-  <div class="modal">
-    <div class="modal-header"><h3>Copy Trader</h3><button class="modal-close" onclick="document.getElementById('copyModal').style.display='none'">&#x2715;</button></div>
-    <div class="modal-body">
-      <p style="font-size:.88rem;color:var(--text-muted);line-height:1.6;margin-bottom:14px;">You are about to copy <strong id="modalTraderName">—</strong>. All trades will be mirrored in your account proportionally.</p>
-      <p style="background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.25);border-radius:var(--r-sm);padding:10px 12px;font-size:.83rem;color:var(--accent);">Copy trading links your account to the selected trader. Your positions will open and close automatically to match theirs.</p>
-    </div>
-    <div class="modal-footer"><button class="btn btn-ghost" onclick="document.getElementById('copyModal').style.display='none'">Cancel</button><button class="btn btn-primary">Confirm & Copy</button></div>
-  </div>
-</div>
 <!-- Low Balance Modal -->
 <div class="modal-overlay" id="lowBalModal" style="display:none;">
   <div class="modal">
@@ -133,15 +164,18 @@
 <script src="firebase-config.js"></script>
 <script>
   initTheme();
-  var userBalance = 0;
+  var userBalance  = 0;
+  var currentUser  = null;
+  var activeCopies = {};
+  var prices       = {};
 
   var TRADERS = [
     { id:1,  name:'Marcus Elliot',     tag:'Forex Specialist',     winRate:87, trades:1842, monthly:'+12.4%', followers:3241, risk:'Low'    },
     { id:2,  name:'Sophia Chen',       tag:'Crypto & Forex',       winRate:82, trades:2310, monthly:'+9.8%',  followers:2187, risk:'Medium' },
-    { id:3,  name:'Micheal Robertson',     tag:'Scalping Expert',      winRate:79, trades:4502, monthly:'+18.2%', followers:1654, risk:'High'   },
+    { id:3,  name:'Micheal Robertson', tag:'Scalping Expert',      winRate:79, trades:4502, monthly:'+18.2%', followers:1654, risk:'High'   },
     { id:4,  name:'Lena Hartmann',     tag:'Swing Trader',         winRate:84, trades:987,  monthly:'+7.6%',  followers:908,  risk:'Low'    },
     { id:5,  name:'Rafael Torres',     tag:'Crypto Specialist',    winRate:76, trades:3120, monthly:'+22.1%', followers:4502, risk:'High'   },
-    { id:6,  name:'Kirk Bonde',       tag:'Long-Term Strategist', winRate:91, trades:654,  monthly:'+5.3%',  followers:1122, risk:'Low'    },
+    { id:6,  name:'Kirk Bonde',        tag:'Long-Term Strategist', winRate:91, trades:654,  monthly:'+5.3%',  followers:1122, risk:'Low'    },
     { id:7,  name:'Dmitri Volkov',     tag:'Algorithmic Trader',   winRate:88, trades:7830, monthly:'+14.7%', followers:6341, risk:'Medium' },
     { id:8,  name:'Priya Nair',        tag:'Gold & Commodities',   winRate:80, trades:1203, monthly:'+8.9%',  followers:743,  risk:'Medium' },
     { id:9,  name:'Carlos Mendez',     tag:'News-Based Trading',   winRate:74, trades:2891, monthly:'+16.5%', followers:2019, risk:'High'   },
@@ -154,14 +188,12 @@
   function renderTraders() {
     document.getElementById('tradersGrid').innerHTML = TRADERS.map(function(t) {
       var initials = t.name.split(' ').map(function(w){ return w[0]; }).join('').substring(0,2);
-      var col = ACCENT_COLORS[(t.id-1) % ACCENT_COLORS.length];
-      var rc = RISK_CLASS[t.risk] || 'badge-neutral';
+      var col      = ACCENT_COLORS[(t.id-1) % ACCENT_COLORS.length];
+      var rc       = RISK_CLASS[t.risk] || 'badge-neutral';
+      var isActive = activeCopies[t.name];
       return '<div class="trader-card">' +
         '<div class="trader-header">' +
-          '<div class="trader-avatar" style="color:' + col + ';border-color:' + col + '55;background:' + col + '18;">' +
-            '<img src="image-' + t.id + '.jpg" alt="" onerror="this.style.display=\'none\'">' +
-            initials +
-          '</div>' +
+          '<div class="trader-avatar" style="color:' + col + ';border-color:' + col + '55;background:' + col + '18;">' + initials + '</div>' +
           '<div><div class="trader-name">' + t.name + '</div><div class="trader-tag">' + t.tag + '</div></div>' +
         '</div>' +
         '<div class="trader-stats">' +
@@ -172,30 +204,123 @@
         '<div class="wr-label"><span style="color:var(--text-muted);">Win Rate</span><span style="font-family:var(--font-m);font-weight:700;color:var(--accent);">' + t.winRate + '%</span></div>' +
         '<div class="wr-bar"><div class="wr-fill" style="width:' + t.winRate + '%"></div></div>' +
         '<div style="font-size:.73rem;color:var(--text-muted);margin-bottom:12px;">' + t.followers.toLocaleString() + ' followers</div>' +
-        '<button class="copy-btn" onclick="handleCopy(\'' + t.name.replace(/'/g,"\\'") + '\')">Copy Trader</button>' +
+        (isActive
+          ? '<button class="copy-btn" style="background:rgba(231,76,60,.1);color:#e74c3c;border:1px solid rgba(231,76,60,.25);" onclick="promptStopCopy(\'' + t.name.replace(/'/g,"\\'") + '\')">Stop Copying</button>'
+          : '<button class="copy-btn" onclick="handleCopy(\'' + t.name.replace(/'/g,"\\'") + '\')">Copy Trader</button>'
+        ) +
       '</div>';
     }).join('');
   }
 
+  function renderActiveCopies() {
+    var section = document.getElementById('activeCopiesSection');
+    var list    = document.getElementById('activeCopiesList');
+    var keys    = Object.keys(activeCopies);
+    if (keys.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    list.innerHTML = keys.map(function(name) {
+      var c = activeCopies[name];
+      var pnl = c.pnl || 0;
+      var pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+      return '<div class="active-copy-card">' +
+        '<div class="active-copy-info"><div class="name">' + name + '</div><div class="meta">Allocated: ' + fmtCurrency(c.allocation) + '</div></div>' +
+        '<div class="active-copy-pnl ' + pnlClass + '">' + (pnl >= 0 ? '+' : '') + fmtCurrency(pnl) + '</div>' +
+        '<button class="stop-copy-btn" onclick="promptStopCopy(\'' + name.replace(/'/g,"\\'") + '\')">Stop</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  var _pendingTraderName = null;
+
   function handleCopy(name) {
     if (userBalance < 10) { document.getElementById('lowBalModal').style.display='flex'; return; }
-    // Balance is sufficient - do nothing (feature handled silently)
+    _pendingTraderName = name;
+    document.getElementById('copyModalTitle').textContent = 'Copy ' + name;
+    document.getElementById('copyModalSub').textContent   = 'Choose how much to allocate to this trader.';
+    document.getElementById('allocInput').value           = '';
+    document.getElementById('allocAvail').textContent     = fmtCurrency(userBalance);
+    document.getElementById('copyModal').classList.add('active');
+  }
+
+  function setAlloc(amount) { document.getElementById('allocInput').value = amount; }
+
+  function closeCopyModal() {
+    document.getElementById('copyModal').classList.remove('active');
+    _pendingTraderName = null;
+  }
+
+  async function confirmCopy() {
+    var amount = parseFloat(document.getElementById('allocInput').value);
+    if (!amount || amount < 10) { showToast('Minimum allocation is $10.', 'error'); return; }
+    if (!_pendingTraderName)    { closeCopyModal(); return; }
+    var name = _pendingTraderName;
+    closeCopyModal();
+    try {
+      // No balance deduction — allocation is just a reference for lot sizing
+      // P&L from closed trades updates balance directly
+      await db.collection('copyPositions').doc(currentUser.uid + '_' + name.replace(/ /g,'_')).set({
+        userId: currentUser.uid, traderName: name, allocation: amount, pnl: 0,
+        startedAt: firebase.firestore.FieldValue.serverTimestamp(), status: 'active'
+      });
+      activeCopies[name] = { allocation: amount, pnl: 0 };
+      startCopyTrading(name, currentUser.uid, amount, prices);
+      renderTraders();
+      renderActiveCopies();
+      showToast('Now copying ' + name + ' with ' + fmtCurrency(amount));
+    } catch(e) { showToast('Error starting copy trade.', 'error'); console.error(e); }
+  }
+
+  async function promptStopCopy(name) {
+    if (!confirm('Stop copying ' + name + '? Open copy trades run until TP/SL.')) return;
+    try {
+      stopCopyTrading(name, currentUser.uid);
+      await db.collection('copyPositions').doc(currentUser.uid + '_' + name.replace(/ /g,'_')).update({
+        status: 'stopped', stoppedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      delete activeCopies[name];
+      renderTraders();
+      renderActiveCopies();
+      showToast('Stopped copying ' + name + '.');
+    } catch(e) { showToast('Error stopping copy trade.', 'error'); }
+  }
+
+  async function updateCopyPnL() {
+    if (!currentUser) return;
+    try {
+      var snap = await db.collection('trades')
+        .where('userId','==',currentUser.uid)
+        .where('isCopyTrade','==',true)
+        .where('status','==','open').get();
+      var pnlMap = {};
+      snap.forEach(function(d) {
+        var t = d.data();
+        var pnl = calcPnL(t, prices[t.symbol] || t.entryPrice);
+        pnlMap[t.traderName] = (pnlMap[t.traderName] || 0) + pnl;
+      });
+      Object.keys(activeCopies).forEach(function(n) { activeCopies[n].pnl = pnlMap[n] || 0; });
+      renderActiveCopies();
+    } catch(e) {}
   }
 
   requireAuth(async function(user) {
-    var s = await db.collection('users').doc(user.uid).get();
+    currentUser = user;
+    var s  = await db.collection('users').doc(user.uid).get();
     var ud = s.data();
     userBalance = ud.balance || 0;
     document.getElementById('sidebarName').textContent   = ud.fullName || 'Trader';
-      // Identify user in Smartsupp
-      if (typeof smartsupp === 'function') {
-        smartsupp('name',  ud.fullName || 'Trader');
-        smartsupp('email', ud.email    || '');
-      }
     document.getElementById('sidebarUid').textContent    = ud.accountId || '--';
     document.getElementById('sidebarAvatar').textContent = (ud.fullName||'T')[0].toUpperCase();
     document.getElementById('topbarBalance').textContent = fmtCurrency(userBalance);
+    var cpSnap = await db.collection('copyPositions')
+      .where('userId','==',user.uid).where('status','==','active').get();
+    cpSnap.forEach(function(d) {
+      var c = d.data();
+      activeCopies[c.traderName] = { allocation: c.allocation, pnl: 0 };
+      startCopyTrading(c.traderName, user.uid, c.allocation, prices);
+    });
+    startPriceRefresh(prices, function() { updateCopyPnL(); });
     renderTraders();
+    renderActiveCopies();
   });
 </script>
 <script type="text/javascript">

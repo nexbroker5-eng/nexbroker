@@ -97,17 +97,10 @@
     var uSnap = await db.collection('users').doc(user.uid).get();
     var ud = uSnap.data();
     document.getElementById('sidebarName').textContent = ud.fullName || 'Trader';
-      // Identify user in Smartsupp
-      if (typeof smartsupp === 'function') {
-        smartsupp('name',  ud.fullName || 'Trader');
-        smartsupp('email', ud.email    || '');
-      }
     document.getElementById('sidebarUid').textContent = ud.accountId || '--';
     document.getElementById('sidebarAvatar').textContent = (ud.fullName || 'T')[0];
 
     var prices = {};
-    var cryptoSyms = ['BTC/USD', 'ETH/USD', 'XRP/USD', 'SOL/USD', 'BNB/USD', 'ADA/USD', 'AVAX/USD'];
-    var commoditySyms = ['XAU/USD', 'XAG/USD', 'WTI/USD', 'NGAS/USD', 'XPT/USD'];
 
     function renderTable(instruments, tbodyId, cat) {
       document.getElementById(tbodyId).innerHTML = instruments.map(function(i) {
@@ -116,23 +109,18 @@
       }).join('');
     }
 
-    // Seed defaults immediately so table shows something on load
-    ALL_INSTRUMENTS.forEach(function(i) { prices[i.symbol] = i.defaultPrice; });
-    renderTable(INSTRUMENTS.forex,        'forexBody',       'Forex');
-    renderTable(INSTRUMENTS.commodities,  'commoditiesBody', 'Commodity');
-    renderTable(INSTRUMENTS.crypto,       'cryptoBody',      'Crypto');
-
-    // Real-time listener: table updates the instant admin saves new prices
-    db.collection('prices').onSnapshot(function(snapshot) {
-      snapshot.forEach(function(d) {
-        var data = d.data();
-        var sym = data.symbol || d.id.replace('-', '/');
-        if (data.price) prices[sym] = data.price;
-      });
+    function renderAll() {
       renderTable(INSTRUMENTS.forex,        'forexBody',       'Forex');
       renderTable(INSTRUMENTS.commodities,  'commoditiesBody', 'Commodity');
       renderTable(INSTRUMENTS.crypto,       'cryptoBody',      'Crypto');
-    }, function(e) { console.error('Price listener error:', e); });
+    }
+
+    // Seed defaults immediately so table shows something on load
+    ALL_INSTRUMENTS.forEach(function(i) { prices[i.symbol] = i.defaultPrice; });
+    renderAll();
+
+    // Start live price refresh — crypto every 60s, forex every 60min
+    startPriceRefresh(prices, function() { renderAll(); });
   });
 </script>
 

@@ -145,11 +145,6 @@
     }
 
     document.getElementById('sidebarName').textContent=document.getElementById('profileName').textContent=ud.fullName||'Trader';
-      // Identify user in Smartsupp
-      if (typeof smartsupp === 'function') {
-        smartsupp('name',  ud.fullName || 'Trader');
-        smartsupp('email', ud.email    || '');
-      }
     document.getElementById('sidebarUid').textContent=ud.accountId||'—';
     document.getElementById('sidebarAvatar').textContent=document.getElementById('profileAvatar').textContent=(ud.fullName||'T')[0];
     document.getElementById('profileEmail').textContent=user.email;

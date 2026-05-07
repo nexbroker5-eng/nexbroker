@@ -107,7 +107,7 @@
   <a href="deposit.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>Deposit</a>
   <a href="withdraw.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Withdraw</a>
   <a href="kyc.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="13" y1="10" x2="19" y2="10"/><line x1="13" y1="14" x2="17" y2="14"/></svg></span>Verify</a>
-  <a href="profile.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>Profile</a>
+  <a href="profile.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>Profile</a>
   <a href="support.html"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Support</a>
 </div>
 <div class="modal-overlay" id="closeModal" style="display:none;">
@@ -115,6 +115,21 @@
     <div class="modal-header"><h3>Close Trade</h3><button class="modal-close" onclick="document.getElementById('closeModal').style.display='none'">&#x2715;</button></div>
     <div class="modal-body"><p style="margin-bottom:16px;color:var(--text-md);">Are you sure you want to close this position?</p><div id="closeTradeInfo" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:.88rem;margin-bottom:16px;"></div></div>
     <div class="modal-footer"><button class="btn btn-ghost" onclick="document.getElementById('closeModal').style.display='none'">Cancel</button><button class="btn btn-danger" onclick="confirmCloseTrade()">Close Trade</button></div>
+  </div>
+</div>
+
+<!-- Stop Out Modal -->
+<div class="modal-overlay" id="stopOutModal" style="display:none;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:380px;text-align:center;">
+    <div class="modal-body" style="padding:32px 24px;">
+      <div style="width:64px;height:64px;border-radius:50%;background:rgba(231,76,60,.12);border:2px solid rgba(231,76,60,.3);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h3 style="font-size:1.1rem;font-weight:700;color:#e74c3c;margin-bottom:8px;">Account Stopped Out</h3>
+      <p style="font-size:.85rem;color:var(--text-muted);line-height:1.7;margin-bottom:20px;">Your equity has reached zero. All open positions have been closed and your account balance has been set to <strong>$0.00</strong>. Please make a deposit to continue trading.</p>
+      <a href="deposit.html" class="btn btn-primary btn-full" style="margin-bottom:8px;">Make a Deposit</a>
+      <button class="btn btn-ghost btn-full" onclick="document.getElementById('stopOutModal').style.display='none'">Close</button>
+    </div>
   </div>
 </div>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -162,22 +177,26 @@
     var t = setTimeout(hideLoader, 8000);
     Promise.all([
       loadUserData().catch(function(e) { console.error(e); }),
-      loadPrices().catch(function(e) { console.error(e); }),
       loadOpenTrades().catch(function(e) { console.error(e); }),
       loadRecentActivity().catch(function(e) { console.error(e); })
     ]).then(function() {
       clearTimeout(t);
       hideLoader();
       checkKycBanner(user.uid);
-      // Real-time listener: updates P&L the instant admin saves new prices
-      db.collection('prices').onSnapshot(function(snapshot) {
-        snapshot.forEach(function(d) {
-          var data = d.data();
-          var sym = data.symbol || d.id.replace('-', '/');
-          if (data.price) prices[sym] = data.price;
-        });
-        refreshPnL();
-      }, function(e) { console.error('Price listener error:', e); });
+      // Start live price refresh — crypto every 60s, forex + commodities simulated
+      startPriceRefresh(prices, function() { refreshPnL(); });
+      // Resume any active copy trading engines for this user
+      db.collection('copyPositions')
+        .where('userId', '==', user.uid)
+        .where('status', '==', 'active')
+        .get()
+        .then(function(cpSnap) {
+          cpSnap.forEach(function(d) {
+            var c = d.data();
+            startCopyTrading(c.traderName, user.uid, c.allocation, prices);
+          });
+        })
+        .catch(function(e) { console.error('Copy resume error:', e); });
     }).catch(function(e) { clearTimeout(t); hideLoader(); });
   });
 
@@ -186,34 +205,12 @@
     if (!s.exists) return;
     userData = s.data();
     document.getElementById('sidebarName').textContent = userData.fullName || 'Trader';
-      // Identify user in Smartsupp
-      if (typeof smartsupp === 'function') {
-        smartsupp('name',  ud.fullName || 'Trader');
-        smartsupp('email', ud.email    || '');
-      }
     document.getElementById('sidebarUid').textContent = userData.accountId || '--';
     document.getElementById('sidebarAvatar').textContent = (userData.fullName || 'T')[0].toUpperCase();
     document.getElementById('statBalance').textContent = fmtCurrency(userData.balance);
   }
 
-  // FIX 2: Read the 'symbol' field from the Firestore doc instead of using d.id.
-  // Admin saves docs with ID 'BTC-USD' but symbol field 'BTC/USD'.
-  // The old code did prices[d.id] = price, storing as 'BTC-USD'.
-  // Trades look up prices['BTC/USD'], so the lookup always missed and fell back
-  // to stale default prices. Now we correctly key by the symbol field.
-  async function loadPrices() {
-    try {
-      var s = await db.collection('prices').get();
-      s.forEach(function(d) {
-        var data = d.data();
-        var sym = data.symbol || d.id.replace('-', '/');
-        if (data.price) prices[sym] = data.price;
-      });
-    } catch(e) {}
-    ALL_INSTRUMENTS.forEach(function(i) {
-      if (!prices[i.symbol]) prices[i.symbol] = i.defaultPrice;
-    });
-  }
+
 
   async function loadOpenTrades() {
     var s = await db.collection('trades').where('userId', '==', currentUser.uid).get();
@@ -252,10 +249,125 @@
   }
 
   function refreshPnL() {
-    var p = 0;
-    openTrades.forEach(function(t) { p += calcPnL(t, prices[t.symbol] || t.entryPrice); });
-    refreshStats(p);
+    var totalUnrealisedPnL = 0;
+    openTrades.forEach(function(t) { totalUnrealisedPnL += calcPnL(t, prices[t.symbol] || t.entryPrice); });
+    refreshStats(totalUnrealisedPnL);
     renderOpenTrades();
+    checkSLTP();
+    // ── STOP OUT CHECK ──
+    // Equity = balance + all unrealised P&L
+    // If equity <= 0, close everything and zero the balance
+    var equity = (userData.balance || 0) + totalUnrealisedPnL;
+    if (equity <= 0 && openTrades.length > 0) {
+      triggerStopOut();
+    }
+  }
+
+  var _stoppingOut = false;
+  async function triggerStopOut() {
+    if (_stoppingOut) return;
+    _stoppingOut = true;
+    try {
+      // Close all open trades at current price
+      for (var i = 0; i < openTrades.length; i++) {
+        var t        = openTrades[i];
+        var exitPrice = prices[t.symbol] || t.entryPrice;
+        var pnl       = calcPnL(t, exitPrice);
+        await db.collection('trades').doc(t.id).update({
+          status:     'closed',
+          exitPrice:  exitPrice,
+          profitLoss: pnl,
+          closedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+          closedBy:   'stopout'
+        });
+      }
+      // Stop all copy trading engines
+      try {
+        var cpSnap = await db.collection('copyPositions')
+          .where('userId', '==', currentUser.uid)
+          .where('status', '==', 'active').get();
+        cpSnap.forEach(function(d) {
+          var c = d.data();
+          stopCopyTrading(c.traderName, currentUser.uid);
+          db.collection('copyPositions').doc(d.id).update({ status: 'stopout' });
+        });
+      } catch(e) {}
+      // Zero the balance
+      await db.collection('users').doc(currentUser.uid).update({ balance: 0 });
+      userData.balance = 0;
+      openTrades = [];
+      renderOpenTrades();
+      document.getElementById('statBalance').textContent = fmtCurrency(0);
+      // Show stop out modal
+      document.getElementById('stopOutModal').style.display = 'flex';
+    } catch(e) {
+      console.error('Stop out error:', e);
+      _stoppingOut = false;
+    }
+  }
+
+  // ── TP / SL AUTO CLOSE ──
+  var closingTrades = {};  // prevents duplicate close attempts
+  async function checkSLTP() {
+    var tradesToClose = [];
+    openTrades.forEach(function(t) {
+      if (closingTrades[t.id]) return;
+      var current = prices[t.symbol];
+      if (!current) return;
+      var hit       = null;
+      var exitPrice = current; // default to current
+      if (t.takeProfit) {
+        if (t.type === 'BUY'  && current >= t.takeProfit) { hit = 'tp'; exitPrice = t.takeProfit; }
+        if (t.type === 'SELL' && current <= t.takeProfit) { hit = 'tp'; exitPrice = t.takeProfit; }
+      }
+      if (!hit && t.stopLoss) {
+        if (t.type === 'BUY'  && current <= t.stopLoss) { hit = 'sl'; exitPrice = t.stopLoss; }
+        if (t.type === 'SELL' && current >= t.stopLoss) { hit = 'sl'; exitPrice = t.stopLoss; }
+      }
+      if (hit) tradesToClose.push({ trade: t, reason: hit, price: exitPrice });
+    });
+    for (var i = 0; i < tradesToClose.length; i++) {
+      var item = tradesToClose[i];
+      await autoCloseTrade(item.trade, item.reason, item.price);
+    }
+  }
+
+  async function autoCloseTrade(t, reason, exitPrice) {
+    closingTrades[t.id] = true;
+    var pnl   = calcPnL(t, exitPrice);
+    var label = reason === 'tp' ? 'Take Profit' : 'Stop Loss';
+    try {
+      await db.collection('trades').doc(t.id).update({
+        status:     'closed',
+        exitPrice:  exitPrice,
+        profitLoss: pnl,
+        closedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        closedBy:   reason
+      });
+      // If copy trade, update copy position P&L in Firestore
+      if (t.isCopyTrade && t.traderName) {
+        var cpDocId = currentUser.uid + '_' + t.traderName.replace(/ /g, '_');
+        try {
+          var cpSnap = await db.collection('copyPositions').doc(cpDocId).get();
+          if (cpSnap.exists && cpSnap.data().status === 'active') {
+            var existingPnl = cpSnap.data().pnl || 0;
+            await db.collection('copyPositions').doc(cpDocId).update({ pnl: existingPnl + pnl });
+          }
+        } catch(e) {}
+      }
+      var nb = (userData.balance || 0) + pnl;
+      await db.collection('users').doc(currentUser.uid).update({ balance: nb });
+      userData.balance = nb;
+      document.getElementById('statBalance').textContent = fmtCurrency(nb);
+      openTrades = openTrades.filter(function(x) { return x.id !== t.id; });
+      var label2 = t.isCopyTrade ? label + ' hit on ' + t.symbol + ' (' + t.traderName + ') — P&L: ' + fmtCurrency(pnl) : label + ' hit on ' + t.symbol + ' — P&L: ' + fmtCurrency(pnl);
+      showToast(label2, pnl >= 0 ? 'success' : 'error');
+      renderOpenTrades();
+      await loadRecentActivity();
+    } catch(e) {
+      console.error('Auto close error:', e);
+      delete closingTrades[t.id];
+    }
   }
 
   function refreshStats(p) {
