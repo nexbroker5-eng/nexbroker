@@ -21,6 +21,15 @@
     .sl-tp-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     #tvWidgetContainer { width:100%; height:400px; }
     #tvWidgetContainer iframe { border:none!important; }
+  /* Expandable position row */
+  .mini-pos-row { cursor:pointer; transition:background .15s; }
+  .mini-pos-row:hover { background:var(--surface-2); }
+  .mini-pos-detail { display:none; padding:10px 16px 14px; background:var(--surface-2); border-bottom:1px solid var(--border-lt); }
+  .mini-pos-detail.open { display:block; }
+  .mini-pos-detail-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .mini-pos-detail-item { display:flex; flex-direction:column; gap:3px; }
+  .mini-pos-detail-item .lbl { font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+  .mini-pos-detail-item .val { font-size:.84rem; font-weight:700; font-family:var(--font-m); }
   </style>
   <!-- Google Translate: restore saved language -->
   <script>
@@ -216,11 +225,6 @@
     var snap = await db.collection('users').doc(user.uid).get();
     userData = snap.data();
     document.getElementById('sidebarName').textContent   = userData.fullName || 'Trader';
-      // Identify user in Smartsupp
-      if (typeof smartsupp === 'function') {
-        smartsupp('name',  ud.fullName || 'Trader');
-        smartsupp('email', ud.email    || '');
-      }
     document.getElementById('sidebarUid').textContent    = userData.accountId || '--';
     document.getElementById('sidebarAvatar').textContent = (userData.fullName || 'T')[0];
     document.getElementById('topbarBalance').textContent  = fmtCurrency(userData.balance);
@@ -375,21 +379,49 @@
   }
 
   async function loadMiniPositions() {
-    var snap = await db.collection('trades').where('userId', '==', currentUser.uid).get();
-    var open = snap.docs.map(function(d) { return d.data(); }).filter(function(t) { return t.status === 'open'; });
-    var el = document.getElementById('miniPositions');
-    if (!open.length) {
-      el.innerHTML = '<div style="padding:16px;text-align:center;font-size:.82rem;color:var(--text-muted);">No open positions.</div>';
-      return;
-    }
+    var snap = await db.collection('trades').where('userId','==',currentUser.uid).get();
+    var open = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); }).filter(function(t){ return t.status==='open'; });
+    var el   = document.getElementById('miniPositions');
+    if (!open.length) { el.innerHTML='<div style="padding:16px;text-align:center;font-size:.82rem;color:var(--text-muted);">No open positions.</div>'; return; }
     el.innerHTML = open.map(function(t) {
-      var curPrc = prices[t.symbol] || t.entryPrice;
-      var pnl = calcPnL(t, curPrc);
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);">' +
-             '<div><strong style="font-size:.85rem;">' + t.symbol + '</strong> <span class="badge badge-' + t.type.toLowerCase() + '" style="font-size:.67rem;">' + t.type + '</span></div>' +
-             '<div class="' + (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') + '" style="font-family:var(--font-m);font-size:.82rem;">' + fmtCurrency(pnl) + '</div>' +
-             '</div>';
+      var curPrc   = prices[t.symbol] || t.entryPrice;
+      var pnl      = calcPnL(t, curPrc);
+      var pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+      var tpPnl    = t.takeProfit ? calcPnL(t, t.takeProfit) : null;
+      var slPnl    = t.stopLoss   ? calcPnL(t, t.stopLoss)   : null;
+      var tpStr    = tpPnl !== null ? '<span class="pnl-positive">+'+fmtCurrency(Math.abs(tpPnl))+'</span>' : '<span style="color:var(--text-muted);">—</span>';
+      var slStr    = slPnl !== null ? '<span class="pnl-negative">-'+fmtCurrency(Math.abs(slPnl))+'</span>'  : '<span style="color:var(--text-muted);">—</span>';
+      var dp       = t.symbol.includes('JPY') ? 3 : 5;
+      var tpLvl    = t.takeProfit ? t.takeProfit.toFixed(dp) : '—';
+      var slLvl    = t.stopLoss   ? t.stopLoss.toFixed(dp)   : '—';
+      return '<div>'+
+        '<div class="mini-pos-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);" onclick="toggleMiniDetail(''+t.id+'')">'+
+          '<div style="display:flex;align-items:center;gap:8px;">'+
+            '<svg width="14" height="14" id="arr_'+t.id+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>'+
+            '<strong style="font-size:.85rem;">'+t.symbol+'</strong>'+
+            '<span class="badge badge-'+t.type.toLowerCase()+'" style="font-size:.67rem;">'+t.type+'</span>'+
+          '</div>'+
+          '<div class="'+pnlClass+'" style="font-family:var(--font-m);font-size:.82rem;">'+fmtCurrency(pnl)+'</div>'+
+        '</div>'+
+        '<div class="mini-pos-detail" id="detail_'+t.id+'">'+
+          '<div class="mini-pos-detail-grid">'+
+            '<div class="mini-pos-detail-item"><span class="lbl">Current P&L</span><span class="val '+pnlClass+'">'+fmtCurrency(pnl)+'</span></div>'+
+            '<div class="mini-pos-detail-item"><span class="lbl">Take Profit</span><span class="val" style="font-size:.78rem;color:var(--text-muted);">'+tpLvl+'</span><span style="margin-top:2px;">'+tpStr+'</span></div>'+
+            '<div class="mini-pos-detail-item"><span class="lbl">Stop Loss</span><span class="val" style="font-size:.78rem;color:var(--text-muted);">'+slLvl+'</span><span style="margin-top:2px;">'+slStr+'</span></div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
     }).join('');
+  }
+
+  function toggleMiniDetail(id) {
+    var detail = document.getElementById('detail_'+id);
+    var arr    = document.getElementById('arr_'+id);
+    if (!detail) return;
+    var isOpen = detail.classList.contains('open');
+    document.querySelectorAll('.mini-pos-detail.open').forEach(function(el){ el.classList.remove('open'); });
+    document.querySelectorAll('[id^="arr_"]').forEach(function(el){ el.style.transform=''; });
+    if (!isOpen) { detail.classList.add('open'); if (arr) arr.style.transform='rotate(180deg)'; }
   }
 </script>
 
