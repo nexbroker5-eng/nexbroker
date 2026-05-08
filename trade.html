@@ -230,26 +230,16 @@
     document.getElementById('topbarBalance').textContent  = fmtCurrency(userData.balance);
     document.getElementById('previewBalance').textContent = fmtCurrency(userData.balance);
 
-    // Seed defaults so UI has something before Firestore responds
-    ALL_INSTRUMENTS.forEach(function(i) {
-      if (!prices[i.symbol]) prices[i.symbol] = i.defaultPrice;
-    });
     buildAssetGrid();
     loadTVWidget(selectedSymbol);
-    updatePriceDisplay(selectedSymbol);
     await loadMiniPositions();
 
-    // Real-time listener: Firestore pushes price updates the instant admin saves them
-    db.collection('prices').onSnapshot(function(snapshot) {
-      snapshot.forEach(function(d) {
-        var data = d.data();
-        var sym = data.symbol || d.id.replace('-', '/');
-        if (data.price) prices[sym] = data.price;
-      });
+    // Start live price refresh — crypto every 60s, forex every 60min
+    startPriceRefresh(prices, function() {
       updatePriceDisplay(selectedSymbol);
       buildAssetGrid();
       loadMiniPositions();
-    }, function(e) { console.error('Price listener error:', e); });
+    });
   });
 
   // TradingView chart widget
@@ -379,49 +369,75 @@
   }
 
   async function loadMiniPositions() {
-    var snap = await db.collection('trades').where('userId','==',currentUser.uid).get();
-    var open = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); }).filter(function(t){ return t.status==='open'; });
-    var el   = document.getElementById('miniPositions');
-    if (!open.length) { el.innerHTML='<div style="padding:16px;text-align:center;font-size:.82rem;color:var(--text-muted);">No open positions.</div>'; return; }
+    var snap = await db.collection('trades').where('userId', '==', currentUser.uid).get();
+    var open  = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); }).filter(function(t) { return t.status === 'open'; });
+    var el    = document.getElementById('miniPositions');
+    if (!open.length) {
+      el.innerHTML = '<div style="padding:16px;text-align:center;font-size:.82rem;color:var(--text-muted);">No open positions.</div>';
+      return;
+    }
     el.innerHTML = open.map(function(t) {
       var curPrc   = prices[t.symbol] || t.entryPrice;
       var pnl      = calcPnL(t, curPrc);
       var pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-      var tpPnl    = t.takeProfit ? calcPnL(t, t.takeProfit) : null;
-      var slPnl    = t.stopLoss   ? calcPnL(t, t.stopLoss)   : null;
-      var tpStr    = tpPnl !== null ? '<span class="pnl-positive">+'+fmtCurrency(Math.abs(tpPnl))+'</span>' : '<span style="color:var(--text-muted);">—</span>';
-      var slStr    = slPnl !== null ? '<span class="pnl-negative">-'+fmtCurrency(Math.abs(slPnl))+'</span>'  : '<span style="color:var(--text-muted);">—</span>';
-      var dp       = t.symbol.includes('JPY') ? 3 : 5;
-      var tpLvl    = t.takeProfit ? t.takeProfit.toFixed(dp) : '—';
-      var slLvl    = t.stopLoss   ? t.stopLoss.toFixed(dp)   : '—';
-      return '<div>'+
-        '<div class="mini-pos-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);" onclick="toggleMiniDetail(''+t.id+'')">'+
-          '<div style="display:flex;align-items:center;gap:8px;">'+
-            '<svg width="14" height="14" id="arr_'+t.id+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>'+
-            '<strong style="font-size:.85rem;">'+t.symbol+'</strong>'+
-            '<span class="badge badge-'+t.type.toLowerCase()+'" style="font-size:.67rem;">'+t.type+'</span>'+
-          '</div>'+
-          '<div class="'+pnlClass+'" style="font-family:var(--font-m);font-size:.82rem;">'+fmtCurrency(pnl)+'</div>'+
-        '</div>'+
-        '<div class="mini-pos-detail" id="detail_'+t.id+'">'+
-          '<div class="mini-pos-detail-grid">'+
-            '<div class="mini-pos-detail-item"><span class="lbl">Current P&L</span><span class="val '+pnlClass+'">'+fmtCurrency(pnl)+'</span></div>'+
-            '<div class="mini-pos-detail-item"><span class="lbl">Take Profit</span><span class="val" style="font-size:.78rem;color:var(--text-muted);">'+tpLvl+'</span><span style="margin-top:2px;">'+tpStr+'</span></div>'+
-            '<div class="mini-pos-detail-item"><span class="lbl">Stop Loss</span><span class="val" style="font-size:.78rem;color:var(--text-muted);">'+slLvl+'</span><span style="margin-top:2px;">'+slStr+'</span></div>'+
-          '</div>'+
-        '</div>'+
+
+      // Expected P&L if TP or SL is hit
+      var tpPnl = t.takeProfit ? calcPnL(t, t.takeProfit) : null;
+      var slPnl = t.stopLoss   ? calcPnL(t, t.stopLoss)   : null;
+
+      var tpStr  = tpPnl !== null ? '<span class="pnl-positive">+' + fmtCurrency(Math.abs(tpPnl)) + '</span>' : '<span style="color:var(--text-muted);">—</span>';
+      var slStr  = slPnl !== null ? '<span class="pnl-negative">-' + fmtCurrency(Math.abs(slPnl))  + '</span>' : '<span style="color:var(--text-muted);">—</span>';
+      var tpLvl  = t.takeProfit ? t.takeProfit.toFixed(t.symbol.includes('JPY') ? 3 : 5) : '—';
+      var slLvl  = t.stopLoss   ? t.stopLoss.toFixed(t.symbol.includes('JPY') ? 3 : 5)   : '—';
+
+      return '<div>' +
+        '<div class="mini-pos-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);" onclick="toggleMiniDetail(\'' + t.id + '\')">' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<svg width="14" height="14" id="arr_' + t.id + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>' +
+            '<strong style="font-size:.85rem;">' + t.symbol + '</strong>' +
+            '<span class="badge badge-' + t.type.toLowerCase() + '" style="font-size:.67rem;">' + t.type + '</span>' +
+          '</div>' +
+          '<div class="' + pnlClass + '" style="font-family:var(--font-m);font-size:.82rem;">' + fmtCurrency(pnl) + '</div>' +
+        '</div>' +
+        '<div class="mini-pos-detail" id="detail_' + t.id + '">' +
+          '<div class="mini-pos-detail-grid">' +
+            '<div class="mini-pos-detail-item">' +
+              '<span class="lbl">Current P&L</span>' +
+              '<span class="val ' + pnlClass + '">' + fmtCurrency(pnl) + '</span>' +
+            '</div>' +
+            '<div class="mini-pos-detail-item">' +
+              '<span class="lbl">Take Profit</span>' +
+              '<span class="val" style="font-size:.78rem;color:var(--text-muted);">' + tpLvl + '</span>' +
+              '<span class="lbl" style="margin-top:2px;">If hit: ' + tpStr + '</span>' +
+            '</div>' +
+            '<div class="mini-pos-detail-item">' +
+              '<span class="lbl">Stop Loss</span>' +
+              '<span class="val" style="font-size:.78rem;color:var(--text-muted);">' + slLvl + '</span>' +
+              '<span class="lbl" style="margin-top:2px;">If hit: ' + slStr + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
       '</div>';
     }).join('');
   }
 
   function toggleMiniDetail(id) {
-    var detail = document.getElementById('detail_'+id);
-    var arr    = document.getElementById('arr_'+id);
+    var detail = document.getElementById('detail_' + id);
+    var arr    = document.getElementById('arr_' + id);
     if (!detail) return;
     var isOpen = detail.classList.contains('open');
-    document.querySelectorAll('.mini-pos-detail.open').forEach(function(el){ el.classList.remove('open'); });
-    document.querySelectorAll('[id^="arr_"]').forEach(function(el){ el.style.transform=''; });
-    if (!isOpen) { detail.classList.add('open'); if (arr) arr.style.transform='rotate(180deg)'; }
+    // Close all
+    document.querySelectorAll('.mini-pos-detail.open').forEach(function(el) {
+      el.classList.remove('open');
+    });
+    document.querySelectorAll('[id^="arr_"]').forEach(function(el) {
+      el.style.transform = '';
+    });
+    // Open clicked if it was closed
+    if (!isOpen) {
+      detail.classList.add('open');
+      if (arr) arr.style.transform = 'rotate(180deg)';
+    }
   }
 </script>
 
