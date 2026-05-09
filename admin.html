@@ -457,12 +457,6 @@
   initTheme();
   let allUsers = [], adminPrices = {}, forceCloseData = null;
 
-  ALL_INSTRUMENTS.forEach(i => {
-    const o = document.createElement('option');
-    o.value = i.symbol; o.textContent = i.symbol;
-    document.getElementById('tradeFilterSymbol').appendChild(o);
-  });
-
   requireAdmin(async (user, adminData) => {
     document.getElementById('adminEmailLabel').textContent = user.email;
     document.getElementById('adminTopEmail').textContent   = user.email;
