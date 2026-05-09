@@ -208,20 +208,22 @@
 
       <!-- ══ TRADES ══ -->
       <div class="tab-panel" id="tab-trades">
-        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-          <select class="form-control" id="tradeFilterStatus" onchange="loadAllTrades()" style="max-width:160px;">
-            <option value="">All Status</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
-          <select class="form-control" id="tradeFilterSymbol" onchange="loadAllTrades()" style="max-width:160px;">
-            <option value="">All Symbols</option>
-          </select>
+        <!-- User list view -->
+        <div id="tradesUserView">
+          <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px;">Click on a user to view their last 10 trades.</div>
+          <div id="tradesUserList"></div>
         </div>
-        <div class="card"><div class="table-wrapper"><table>
-          <thead><tr><th>User</th><th>Symbol</th><th>Type</th><th>Lot</th><th>Entry</th><th>Exit / Current</th><th>P&amp;L</th><th>Status</th><th>Opened</th><th>Action</th></tr></thead>
-          <tbody id="tradesBody"></tbody>
-        </table></div></div>
+        <!-- User trade detail view -->
+        <div id="tradesDetailView" style="display:none;">
+          <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;display:inline-flex;align-items:center;gap:6px;" onclick="document.getElementById('tradesDetailView').style.display='none';document.getElementById('tradesUserView').style.display='block';">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Back to Users
+          </button>
+          <div id="tradesDetailTitle" style="font-size:.9rem;font-weight:700;margin-bottom:12px;"></div>
+          <div class="card"><div class="table-wrapper"><table>
+            <thead><tr><th>Symbol</th><th>Type</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>Status</th><th>Opened</th><th>Action</th></tr></thead>
+            <tbody id="tradesBody"></tbody>
+          </table></div></div>
+        </div>
       </div>
 
       <!-- ══ PRICES ══ -->
@@ -710,31 +712,61 @@
 
   // ── ALL TRADES ──
   async function loadAllTrades() {
-    const statusFilter = document.getElementById('tradeFilterStatus').value;
-    const symbolFilter = document.getElementById('tradeFilterSymbol').value;
-    const snap = await db.collection('trades').get();
+    // Show user list — click a user to see their last 10 trades
     const userMap = {};
     allUsers.forEach(u => userMap[u.id] = u);
+    const snap = await db.collection('trades').get();
+    // Count trades per user
+    const tradeCounts = {};
+    snap.forEach(d => {
+      const uid = d.data().userId;
+      if (!tradeCounts[uid]) tradeCounts[uid] = { total:0, open:0 };
+      tradeCounts[uid].total++;
+      if (d.data().status === 'open') tradeCounts[uid].open++;
+    });
+    const list = document.getElementById('tradesUserList');
+    const usersWithTrades = allUsers.filter(u => tradeCounts[u.id]);
+    if (!usersWithTrades.length) {
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:.84rem;">No trades found.</div>';
+      return;
+    }
+    list.innerHTML = usersWithTrades.map(u => {
+      const c = tradeCounts[u.id] || { total:0, open:0 };
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="loadUserTrades('${u.id}','${(u.fullName||'Unknown').replace(/'/g,"\'")}')">
+        <div>
+          <div style="font-weight:700;font-size:.9rem;">${u.fullName||'Unknown'}</div>
+          <div style="font-size:.75rem;color:var(--text-muted);">${u.email||''}</div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <div style="text-align:center;"><div style="font-weight:700;font-size:.9rem;">${c.total}</div><div style="font-size:.68rem;color:var(--text-muted);">Total</div></div>
+          <div style="text-align:center;"><div style="font-weight:700;font-size:.9rem;color:var(--accent);">${c.open}</div><div style="font-size:.68rem;color:var(--text-muted);">Open</div></div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('tradesUserView').style.display = 'block';
+    document.getElementById('tradesDetailView').style.display = 'none';
+  }
 
+  async function loadUserTrades(uid, name) {
+    document.getElementById('tradesUserView').style.display = 'none';
+    document.getElementById('tradesDetailView').style.display = 'block';
+    document.getElementById('tradesDetailTitle').textContent = name + ' — Last 10 Trades';
+    const snap = await db.collection('trades').where('userId','==',uid).get();
     let trades = snap.docs.map(d => ({id:d.id,...d.data()}));
-    if (statusFilter) trades = trades.filter(t => t.status === statusFilter);
-    if (symbolFilter) trades = trades.filter(t => t.symbol === symbolFilter);
     trades.sort((a,b) => (b.openedAt?.seconds||0) - (a.openedAt?.seconds||0));
-
+    trades = trades.slice(0, 10);
     document.getElementById('tradesBody').innerHTML = trades.map(t => {
-      const u = userMap[t.userId];
       const curPrc = adminPrices[t.symbol] || t.entryPrice;
       const pnl = t.status==='open' ? calcPnL(t, curPrc) : (t.profitLoss||0);
       const pnlClass = pnl>=0?'pnl-positive':'pnl-negative';
       const exitDisplay = t.status==='open' ? fmtPrice(curPrc,t.symbol) : (t.exitPrice?fmtPrice(t.exitPrice,t.symbol):'—');
       const closeBtn = t.status==='open'
-        ? `<button class="btn btn-danger btn-sm" onclick="openForceClose('${t.id}','${t.symbol}','${t.type}',${t.lotSize},${t.entryPrice},${curPrc},${pnl},'${t.userId}')">Force Close</button>`
+        ? `<button class="btn btn-danger btn-sm" onclick="openForceClose('${t.id}','${t.symbol}','${t.type}',${t.lotSize},${t.entryPrice},${curPrc},${pnl},'${uid}')">Force Close</button>`
         : '—';
       return `<tr>
-        <td style="font-size:.8rem;">${u?.fullName||'—'}</td>
         <td><strong>${t.symbol}</strong></td>
         <td><span class="badge badge-${t.type.toLowerCase()}">${t.type}</span></td>
-        <td class="mono">${t.lotSize}</td>
         <td class="mono">${fmtPrice(t.entryPrice,t.symbol)}</td>
         <td class="mono">${exitDisplay}</td>
         <td class="${pnlClass}">${fmtCurrency(pnl)}</td>
@@ -742,7 +774,7 @@
         <td style="font-size:.75rem;color:var(--text-muted);">${fmtDate(t.openedAt)}</td>
         <td>${closeBtn}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted);">No trades found.</td></tr>';
+    }).join('') || '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No trades found.</td></tr>';
   }
 
   function openForceClose(tradeId, symbol, type, lot, entry, curPrc, pnl, userId) {
@@ -919,10 +951,7 @@
               <div class="ticket-card__subject">${t.subject||'No subject'}</div>
               <div class="ticket-card__meta">${u?.fullName||'Unknown'} &middot; ${u?.email||''} &middot; ${fmtDate(t.createdAt)}</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span class="badge ${stClass}">${t.status||'open'}</span>
-              <button class="btn btn-sm" style="padding:4px 10px;background:rgba(231,76,60,.1);color:#e74c3c;border:1px solid rgba(231,76,60,.25);border-radius:var(--r-sm);font-size:.72rem;font-weight:600;cursor:pointer;" onclick="deleteTicket('${t.id}')">Delete</button>
-            </div>
+            <span class="badge ${stClass}">${t.status||'open'}</span>
           </div>
           <div class="ticket-card__body">${t.message||''}</div>
           ${t.adminReply ? `
@@ -960,17 +989,6 @@
       loadTickets();
     } catch(e) {
       showToast('Error sending reply.','error');
-    }
-  }
-
-  async function deleteTicket(ticketId) {
-    if (!confirm('Are you sure you want to delete this request? This cannot be undone.')) return;
-    try {
-      await db.collection('support').doc(ticketId).delete();
-      showToast('Request deleted successfully.');
-      loadTickets();
-    } catch(e) {
-      showToast('Error deleting request.','error');
     }
   }
 

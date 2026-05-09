@@ -371,28 +371,37 @@ var COPY_TRADERS = {
 var _copyIntervals = {};
 
 // Called when a user copies a trader — starts auto-trading engine
+// Fires 2 trades at a time, then waits interval before next pair
+// Trades designed to close within 2-5 minutes (tight TP/SL distances)
 function startCopyTrading(traderName, userId, allocation, pricesObj) {
   var profile = COPY_TRADERS[traderName];
   if (!profile) return;
   var sessionKey = userId + '_' + traderName.replace(/ /g,'_');
   if (_copyIntervals[sessionKey]) return; // Already running
 
-  // Trade interval based on frequency (freq = trades per day, spread across day)
-  var tradeInterval = Math.floor((24 * 60 * 60 * 1000) / profile.freq);
-  // Add jitter so trades don't fire at predictable intervals
-  function scheduleNextTrade() {
-    var jitter = (Math.random() - 0.5) * tradeInterval * 0.4;
-    var delay  = tradeInterval + jitter;
+  // Interval between pairs of trades — based on freq (trades per day / 2 pairs)
+  var pairInterval = Math.floor((24 * 60 * 60 * 1000) / (profile.freq / 2));
+  // Add jitter ±20%
+  function scheduleNextPair() {
+    var jitter = (Math.random() - 0.5) * pairInterval * 0.4;
+    var delay  = Math.max(pairInterval + jitter, 60000); // minimum 1 min between pairs
     _copyIntervals[sessionKey] = setTimeout(async function() {
-      await _executeCopyTrade(traderName, profile, userId, allocation, pricesObj);
-      scheduleNextTrade();
+      // Fire 2 trades simultaneously
+      await Promise.all([
+        _executeCopyTrade(traderName, profile, userId, allocation, pricesObj),
+        _executeCopyTrade(traderName, profile, userId, allocation, pricesObj)
+      ]);
+      scheduleNextPair();
     }, delay);
   }
-  // Fire first trade within 30-60 seconds so user sees activity quickly
+  // Fire first pair within 30-60 seconds
   var firstDelay = 30000 + Math.random() * 30000;
   _copyIntervals[sessionKey] = setTimeout(async function() {
-    await _executeCopyTrade(traderName, profile, userId, allocation, pricesObj);
-    scheduleNextTrade();
+    await Promise.all([
+      _executeCopyTrade(traderName, profile, userId, allocation, pricesObj),
+      _executeCopyTrade(traderName, profile, userId, allocation, pricesObj)
+    ]);
+    scheduleNextPair();
   }, firstDelay);
 }
 
@@ -427,13 +436,14 @@ async function _executeCopyTrade(traderName, profile, userId, allocation, prices
     var tradeType = alignWithTrend ? (trendDir > 0 ? 'BUY' : 'SELL') : (trendDir > 0 ? 'SELL' : 'BUY');
 
     // ── Position sizing & TP/SL — 1:3 RR, 10% risk on SL, 30% return on TP ──
-    // SL distance fixed per instrument, TP is 3x the SL distance
+    // SL distances tuned for 2-5 minute trade duration (8 ticks at current sim speed)
+    // TP is 3x SL distance for 1:3 RR
     var SL_DIST = {
-      'EUR/USD': 0.0010, 'GBP/USD': 0.0010, 'USD/JPY': 0.10,
-      'USD/CHF': 0.0010, 'AUD/USD': 0.0010, 'USD/CAD': 0.0010,
-      'EUR/GBP': 0.0008, 'NZD/USD': 0.0008,
-      'XAU/USD': 3.0,    'XAG/USD': 0.07,   'WTI/USD': 0.17,
-      'NGAS/USD': 0.017, 'XPT/USD': 2.0
+      'EUR/USD': 0.00187, 'GBP/USD': 0.00240, 'USD/JPY': 0.173,
+      'USD/CHF': 0.00173, 'AUD/USD': 0.00160, 'USD/CAD': 0.00173,
+      'EUR/GBP': 0.00147, 'NZD/USD': 0.00133,
+      'XAU/USD': 4.8,     'XAG/USD': 0.12,    'WTI/USD': 0.48,
+      'NGAS/USD': 0.0213, 'XPT/USD': 3.73
     };
     var commoditySymbols = ['XAU/USD','XAG/USD','WTI/USD','NGAS/USD','XPT/USD'];
     var isCommodity      = commoditySymbols.indexOf(chosen) !== -1;
