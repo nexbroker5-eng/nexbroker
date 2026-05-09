@@ -466,7 +466,9 @@
   requireAdmin(async (user, adminData) => {
     document.getElementById('adminEmailLabel').textContent = user.email;
     document.getElementById('adminTopEmail').textContent   = user.email;
-    await Promise.all([loadOverview(), loadUsers(), loadPricesAdmin()]);
+    await Promise.all([loadOverview(), loadUsers()]);
+    // Load prices in background — don't block page open
+    loadPricesAdmin();
     document.getElementById('loadingOverlay').style.display = 'none';
   });
 
@@ -817,74 +819,79 @@
   async function fetchAndSaveLivePrices() {
     var fetched = {};
 
-    // ── FOREX via Twelve Data (real-time, updates every minute) ──
-    var TWELVE_KEY = '647cfbaf8cc746b2b6870ad166ed3f82';
-    var forexPairs = ['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD','EUR/GBP','NZD/USD'];
-    await Promise.all(forexPairs.map(async function(pair) {
-      try {
-        var symbol = pair.replace('/', '');
-        var r = await fetch('https://api.twelvedata.com/price?symbol=' + symbol + '&apikey=' + TWELVE_KEY);
-        if (r.ok) {
-          var d = await r.json();
-          if (d.price) fetched[pair] = parseFloat(parseFloat(d.price).toFixed(5));
-        }
-      } catch(e) {}
-    }));
-
-    // ── COMMODITIES via Twelve Data ──
-    var commodityMap = { 'XAU/USD':'XAU/USD', 'XAG/USD':'XAG/USD', 'WTI/USD':'WTI/USD', 'NGAS/USD':'NATURAL_GAS', 'XPT/USD':'XPT/USD' };
-    await Promise.all(Object.keys(commodityMap).map(async function(ourSym) {
-      try {
-        var tdSym = commodityMap[ourSym];
-        var r = await fetch('https://api.twelvedata.com/price?symbol=' + tdSym + '&apikey=' + TWELVE_KEY);
-        if (r.ok) {
-          var d = await r.json();
-          if (d.price) fetched[ourSym] = parseFloat(parseFloat(d.price).toFixed(3));
-        }
-      } catch(e) {}
-    }));
-
-    // ── CRYPTO via CoinGecko (fully CORS-open, no key needed) ──
+    // ── FOREX via Frankfurter (free, no key, no CORS issues) ──
     try {
-      var cgResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,ripple,solana,binancecoin,cardano,avalanche-2&vs_currencies=usd');
+      var r = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR,GBP,JPY,CHF,AUD,CAD,NZD&_=' + Date.now());
+      if (r.ok) {
+        var data = await r.json();
+        if (data.rates) {
+          var rates = data.rates;
+          if (rates.EUR) fetched['EUR/USD'] = parseFloat((1/rates.EUR).toFixed(5));
+          if (rates.GBP) fetched['GBP/USD'] = parseFloat((1/rates.GBP).toFixed(5));
+          if (rates.JPY) fetched['USD/JPY'] = parseFloat(rates.JPY.toFixed(3));
+          if (rates.CHF) fetched['USD/CHF'] = parseFloat(rates.CHF.toFixed(5));
+          if (rates.AUD) fetched['AUD/USD'] = parseFloat((1/rates.AUD).toFixed(5));
+          if (rates.CAD) fetched['USD/CAD'] = parseFloat(rates.CAD.toFixed(5));
+          if (rates.EUR && rates.GBP) fetched['EUR/GBP'] = parseFloat((rates.GBP/rates.EUR).toFixed(5));
+          if (rates.NZD) fetched['NZD/USD'] = parseFloat((1/rates.NZD).toFixed(5));
+        }
+      }
+    } catch(e) { console.error('Forex fetch error:', e); }
+
+    // ── COMMODITIES via GoldAPI.io (Gold + Silver) + static seeds for others ──
+    try {
+      var rGold = await fetch('https://www.goldapi.io/api/XAU/USD', { headers: { 'x-access-token': 'goldapi-43623ff7f00f5c13ae81005b7d8de9a6-io' } });
+      if (rGold.ok) { var gd = await rGold.json(); if (gd.price) fetched['XAU/USD'] = parseFloat(gd.price); }
+    } catch(e) {}
+    try {
+      var rSilver = await fetch('https://www.goldapi.io/api/XAG/USD', { headers: { 'x-access-token': 'goldapi-43623ff7f00f5c13ae81005b7d8de9a6-io' } });
+      if (rSilver.ok) { var sd = await rSilver.json(); if (sd.price) fetched['XAG/USD'] = parseFloat(sd.price); }
+    } catch(e) {}
+    // Static seeds for Oil, Gas, Platinum
+    if (!fetched['WTI/USD'])  fetched['WTI/USD']  = adminPrices['WTI/USD']  || 78.50;
+    if (!fetched['NGAS/USD']) fetched['NGAS/USD'] = adminPrices['NGAS/USD'] || 2.10;
+    if (!fetched['XPT/USD'])  fetched['XPT/USD']  = adminPrices['XPT/USD']  || 965.00;
+
+    // ── CRYPTO via CoinGecko ──
+    try {
+      var cgResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,ripple,solana,binancecoin,cardano,avalanche-2&vs_currencies=usd&_=' + Date.now());
       if (cgResp.ok) {
         var cg = await cgResp.json();
-        if (cg.bitcoin)       fetched['BTC/USD']  = parseFloat(cg.bitcoin.usd);
-        if (cg.ethereum)      fetched['ETH/USD']  = parseFloat(cg.ethereum.usd);
-        if (cg.ripple)        fetched['XRP/USD']  = parseFloat(cg.ripple.usd);
-        if (cg.solana)        fetched['SOL/USD']  = parseFloat(cg.solana.usd);
-        if (cg.binancecoin)   fetched['BNB/USD']  = parseFloat(cg.binancecoin.usd);
-        if (cg.cardano)       fetched['ADA/USD']  = parseFloat(cg.cardano.usd);
+        if (cg.bitcoin)        fetched['BTC/USD']  = parseFloat(cg.bitcoin.usd);
+        if (cg.ethereum)       fetched['ETH/USD']  = parseFloat(cg.ethereum.usd);
+        if (cg.ripple)         fetched['XRP/USD']  = parseFloat(cg.ripple.usd);
+        if (cg.solana)         fetched['SOL/USD']  = parseFloat(cg.solana.usd);
+        if (cg.binancecoin)    fetched['BNB/USD']  = parseFloat(cg.binancecoin.usd);
+        if (cg.cardano)        fetched['ADA/USD']  = parseFloat(cg.cardano.usd);
         if (cg['avalanche-2']) fetched['AVAX/USD'] = parseFloat(cg['avalanche-2'].usd);
       }
     } catch(e) { console.error('Crypto fetch error:', e); }
 
-    // ── Save to Firestore and update UI ──
+    // ── Update adminPrices and UI ──
+    Object.keys(fetched).forEach(function(symbol) {
+      adminPrices[symbol] = fetched[symbol];
+      var el = document.getElementById('price_' + symbol.replace('/', '_'));
+      if (el) el.textContent = fmtPrice(fetched[symbol], symbol);
+    });
+
+    // Save to Firestore prices collection
     if (Object.keys(fetched).length > 0) {
-      var batch = db.batch();
-      Object.keys(fetched).forEach(function(symbol) {
-        adminPrices[symbol] = fetched[symbol];
-        var docId = symbolToDocId(symbol);
-        batch.set(db.collection('prices').doc(docId), {
-          price: fetched[symbol],
-          symbol: symbol,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        var el = document.getElementById('price_' + symbol.replace('/', '_'));
-        if (el) el.textContent = fmtPrice(fetched[symbol], symbol);
-      });
       try {
+        var batch = db.batch();
+        Object.keys(fetched).forEach(function(symbol) {
+          var docId = symbolToDocId(symbol);
+          batch.set(db.collection('prices').doc(docId), {
+            price: fetched[symbol], symbol: symbol,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
         await batch.commit();
         document.getElementById('pricesSyncDot').style.background = '#00d4aa';
         document.getElementById('pricesSyncStatus').textContent = 'Synced at ' + new Date().toLocaleTimeString();
       } catch(e) {
-        console.error('Firestore write error:', e);
         document.getElementById('pricesSyncDot').style.background = '#e74c3c';
-        document.getElementById('pricesSyncStatus').textContent = 'Firestore write failed: ' + e.message;
+        document.getElementById('pricesSyncStatus').textContent = 'Firestore write failed.';
       }
-    } else {
-      document.getElementById('pricesSyncDot').style.background = '#e74c3c';
-      document.getElementById('pricesSyncStatus').textContent = 'Fetch failed - retrying...';
     }
   }
 
@@ -917,9 +924,10 @@
     buildPriceRows(INSTRUMENTS.commodities, 'commoditiesPrices');
     buildPriceRows(INSTRUMENTS.crypto,      'cryptoPrices');
 
-    await fetchAndSaveLivePrices();
+    // Fetch live prices in background — do not block page render
+    fetchAndSaveLivePrices();
     if (priceAutoInterval) clearInterval(priceAutoInterval);
-    priceAutoInterval = setInterval(fetchAndSaveLivePrices, 15000);
+    priceAutoInterval = setInterval(fetchAndSaveLivePrices, 60000);
   }
 
   // ── SUPPORT TICKETS ──
