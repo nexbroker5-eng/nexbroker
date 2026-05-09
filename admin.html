@@ -129,6 +129,7 @@
       <button class="admin-nav-link"        id="anav-wallets"     onclick="switchTab('wallets')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7h20z"/></svg> Wallets</button>
       <button class="admin-nav-link"        id="anav-support"     onclick="switchTab('support')"><svg width="15" height="15"><use href="#ic-support"/></svg> Support</button>
       <button class="admin-nav-link"        id="anav-kyc"         onclick="switchTab('kyc')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="13" y1="10" x2="19" y2="10"/><line x1="13" y1="14" x2="17" y2="14"/></svg> KYC</button>
+      <button class="admin-nav-link"        id="anav-copyconfig"  onclick="switchTab('copyconfig')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Copy Config</button>
     </nav>
     <div class="sidebar-footer">
       <div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px;" id="adminEmailLabel">—</div>
@@ -281,6 +282,17 @@
         </div>
       </div>
 
+      <!-- ══ COPY CONFIG ══ -->
+      <div class="tab-panel" id="tab-copyconfig">
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:16px;background:var(--surface-2);padding:12px;border-radius:var(--r-sm);border:1px solid var(--border);">
+          Set the maximum daily trades and risk-to-reward ratio for each user's copy trading. Default is <strong>5 trades/day</strong> and <strong>1:1 RR</strong>. Changes take effect immediately on the next trade.
+        </p>
+        <div class="card"><div class="table-wrapper"><table>
+          <thead><tr><th>Name</th><th>Account ID</th><th>Max Trades/Day</th><th>RR Ratio</th><th>Risk %</th><th>Action</th></tr></thead>
+          <tbody id="copyConfigBody"></tbody>
+        </table></div></div>
+      </div>
+
       <!-- ══ KYC ══ -->
       <div class="tab-panel" id="tab-kyc">
 
@@ -363,6 +375,7 @@
     <button class="admin-mob-btn"        id="mob-prices"      onclick="switchTab('prices')"><svg width="18" height="18"><use href="#ic-prices"/></svg>Prices</button>
     <button class="admin-mob-btn"        id="mob-wallets"     onclick="switchTab('wallets')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L2 7h20z"/></svg>Wallets</button>
     <button class="admin-mob-btn"        id="mob-support"     onclick="switchTab('support')"><svg width="18" height="18"><use href="#ic-support"/></svg>Support</button>
+    <button class="admin-mob-btn"        id="mob-copyconfig"  onclick="switchTab('copyconfig')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Copy Config</button>
     <button class="admin-mob-btn"        id="mob-kyc"         onclick="switchTab('kyc')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="13" y1="10" x2="19" y2="10"/><line x1="13" y1="14" x2="17" y2="14"/></svg>KYC</button>
   </div>
 </div>
@@ -481,6 +494,7 @@
     if (tab==='support')     loadTickets();
     if (tab==='wallets')     loadWalletsAdmin();
     if (tab==='kyc')         loadKyc();
+    if (tab==='copyconfig')  loadCopyConfig();
   }
 
   // ── OVERVIEW ──
@@ -707,6 +721,49 @@
   }
 
   // ── ALL TRADES ──
+  // ── COPY CONFIG ──
+  async function loadCopyConfig() {
+    const snap = await db.collection('users').get();
+    const rows = [];
+    snap.forEach(d => {
+      const u = { id: d.id, ...d.data() };
+      rows.push(u);
+    });
+    rows.sort((a,b) => (a.fullName||'').localeCompare(b.fullName||''));
+    document.getElementById('copyConfigBody').innerHTML = rows.map(u => {
+      const maxTrades = u.copyMaxTrades !== undefined ? u.copyMaxTrades : 5;
+      const rr        = u.copyRR        !== undefined ? u.copyRR        : 1;
+      const risk      = u.copyRisk      !== undefined ? u.copyRisk      : 10;
+      return `<tr>
+        <td style="font-weight:600;">${u.fullName||'—'}</td>
+        <td class="mono" style="font-size:.78rem;">${u.accountId||'—'}</td>
+        <td><input type="number" min="1" max="50" value="${maxTrades}" id="mt_${u.id}" class="form-control" style="width:80px;padding:5px 8px;font-size:.83rem;"/></td>
+        <td>
+          <select id="rr_${u.id}" class="form-control" style="width:100px;padding:5px 8px;font-size:.83rem;">
+            <option value="1"   ${rr==1?'selected':''}>1:1</option>
+            <option value="2"   ${rr==2?'selected':''}>1:2</option>
+            <option value="3"   ${rr==3?'selected':''}>1:3</option>
+            <option value="0.5" ${rr==0.5?'selected':''}>1:0.5</option>
+          </select>
+        </td>
+        <td><input type="number" min="1" max="100" value="${risk}" id="rk_${u.id}" class="form-control" style="width:80px;padding:5px 8px;font-size:.83rem;" placeholder="%"/></td>
+        <td><button class="btn btn-primary btn-sm" onclick="saveCopyConfig('${u.id}')">Save</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No users found.</td></tr>';
+  }
+
+  async function saveCopyConfig(uid) {
+    const maxTrades = parseInt(document.getElementById('mt_' + uid).value)    || 5;
+    const rr        = parseFloat(document.getElementById('rr_' + uid).value)  || 1;
+    const risk      = parseFloat(document.getElementById('rk_' + uid).value)  || 10;
+    try {
+      await db.collection('users').doc(uid).update({ copyMaxTrades: maxTrades, copyRR: rr, copyRisk: risk });
+      showToast('Copy config saved successfully.');
+    } catch(e) {
+      showToast('Error saving config.', 'error');
+    }
+  }
+
   async function loadAllTrades() {
     // Show user list — click a user to see their last 10 trades
     const userMap = {};

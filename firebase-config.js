@@ -372,37 +372,60 @@ var _copyIntervals = {};
 
 // Called when a user copies a trader — starts auto-trading engine
 // Fires 2 trades at a time, then waits interval before next pair
-// Trades designed to close within 2-5 minutes (tight TP/SL distances)
+// Reads copyMaxTrades and copyRR from user's Firestore document
 function startCopyTrading(traderName, userId, allocation, pricesObj) {
   var profile = COPY_TRADERS[traderName];
   if (!profile) return;
   var sessionKey = userId + '_' + traderName.replace(/ /g,'_');
-  if (_copyIntervals[sessionKey]) return; // Already running
+  if (_copyIntervals[sessionKey]) return;
 
-  // Interval between pairs of trades — based on freq (trades per day / 2 pairs)
-  var pairInterval = Math.floor((24 * 60 * 60 * 1000) / (profile.freq / 2));
-  // Add jitter ±20%
-  function scheduleNextPair() {
-    var jitter = (Math.random() - 0.5) * pairInterval * 0.4;
-    var delay  = Math.max(pairInterval + jitter, 60000); // minimum 1 min between pairs
+  // Load user config from Firestore then start engine
+  db.collection('users').doc(userId).get().then(function(snap) {
+    var userData    = snap.exists ? snap.data() : {};
+    var maxTrades   = userData.copyMaxTrades !== undefined ? userData.copyMaxTrades : 5;
+    var rrRatio     = userData.copyRR        !== undefined ? userData.copyRR        : 1;
+    var riskPct     = userData.copyRisk      !== undefined ? userData.copyRisk      : 10;
+    var sessionData = { maxTrades: maxTrades, rrRatio: rrRatio, riskPct: riskPct, count: 0 };
+
+    // Interval between pairs — spread maxTrades over the day
+    var pairInterval = Math.floor((24 * 60 * 60 * 1000) / Math.ceil(maxTrades / 2));
+
+    function scheduleNextPair() {
+      if (sessionData.count >= sessionData.maxTrades) return; // Daily limit reached
+      var jitter = (Math.random() - 0.5) * pairInterval * 0.4;
+      var delay  = Math.max(pairInterval + jitter, 60000);
+      _copyIntervals[sessionKey] = setTimeout(async function() {
+        // Re-read config in case admin changed it
+        var freshSnap = await db.collection('users').doc(userId).get();
+        var freshData = freshSnap.exists ? freshSnap.data() : {};
+        sessionData.maxTrades = freshData.copyMaxTrades !== undefined ? freshData.copyMaxTrades : 5;
+        sessionData.rrRatio   = freshData.copyRR        !== undefined ? freshData.copyRR        : 1;
+        sessionData.riskPct   = freshData.copyRisk      !== undefined ? freshData.copyRisk      : 10;
+        if (sessionData.count >= sessionData.maxTrades) return;
+        var tradesToFire = Math.min(2, sessionData.maxTrades - sessionData.count);
+        var promises = [];
+        for (var i = 0; i < tradesToFire; i++) {
+          promises.push(_executeCopyTrade(traderName, profile, userId, allocation, pricesObj, sessionData.rrRatio, sessionData.riskPct));
+        }
+        await Promise.all(promises);
+        sessionData.count += tradesToFire;
+        scheduleNextPair();
+      }, delay);
+    }
+
+    // First pair fires within 30-60 seconds
+    var firstDelay = 30000 + Math.random() * 30000;
     _copyIntervals[sessionKey] = setTimeout(async function() {
-      // Fire 2 trades simultaneously
-      await Promise.all([
-        _executeCopyTrade(traderName, profile, userId, allocation, pricesObj),
-        _executeCopyTrade(traderName, profile, userId, allocation, pricesObj)
-      ]);
+      var tradesToFire = Math.min(2, sessionData.maxTrades);
+      var promises = [];
+      for (var i = 0; i < tradesToFire; i++) {
+        promises.push(_executeCopyTrade(traderName, profile, userId, allocation, pricesObj, sessionData.rrRatio, sessionData.riskPct));
+      }
+      await Promise.all(promises);
+      sessionData.count += tradesToFire;
       scheduleNextPair();
-    }, delay);
-  }
-  // Fire first pair within 30-60 seconds
-  var firstDelay = 30000 + Math.random() * 30000;
-  _copyIntervals[sessionKey] = setTimeout(async function() {
-    await Promise.all([
-      _executeCopyTrade(traderName, profile, userId, allocation, pricesObj),
-      _executeCopyTrade(traderName, profile, userId, allocation, pricesObj)
-    ]);
-    scheduleNextPair();
-  }, firstDelay);
+    }, firstDelay);
+  });
 }
 
 function stopCopyTrading(traderName, userId) {
@@ -413,7 +436,9 @@ function stopCopyTrading(traderName, userId) {
   }
 }
 
-async function _executeCopyTrade(traderName, profile, userId, allocation, pricesObj) {
+async function _executeCopyTrade(traderName, profile, userId, allocation, pricesObj, rrRatio, riskPct) {
+  rrRatio = rrRatio || 1;
+  riskPct = riskPct || 10;
   try {
     // Pick instrument based on bias weights
     var instruments = Object.keys(profile.bias);
@@ -435,9 +460,9 @@ async function _executeCopyTrade(traderName, profile, userId, allocation, prices
     var alignWithTrend = Math.random() < profile.wr;
     var tradeType = alignWithTrend ? (trendDir > 0 ? 'BUY' : 'SELL') : (trendDir > 0 ? 'SELL' : 'BUY');
 
-    // ── Position sizing & TP/SL — 1:3 RR, 10% risk on SL, 30% return on TP ──
+    // ── Position sizing & TP/SL — RR ratio from admin config, 10% risk on SL ──
     // SL distances tuned for 2-5 minute trade duration (8 ticks at current sim speed)
-    // TP is 3x SL distance for 1:3 RR
+    // TP = SL * rrRatio (set per user by admin, default 1:1)
     var SL_DIST = {
       'EUR/USD': 0.00187, 'GBP/USD': 0.00240, 'USD/JPY': 0.173,
       'USD/CHF': 0.00173, 'AUD/USD': 0.00160, 'USD/CAD': 0.00173,
@@ -448,15 +473,14 @@ async function _executeCopyTrade(traderName, profile, userId, allocation, prices
     var commoditySymbols = ['XAU/USD','XAG/USD','WTI/USD','NGAS/USD','XPT/USD'];
     var isCommodity      = commoditySymbols.indexOf(chosen) !== -1;
     var slDist           = SL_DIST[chosen] || 0.0010;
-    var tpDist           = slDist * 3; // 1:3 RR
-    var targetLoss       = allocation * 0.10; // risk 10% on SL
+    var tpDist           = slDist * rrRatio; // TP = SL * RR ratio from admin config
+    var targetLoss = allocation * (riskPct / 100); // risk % of allocation on SL
 
     // Work backwards from SL: lotSize = targetLoss / (slDist * multiplier)
     var multiplier = chosen.includes('JPY') ? 100 : isCommodity ? 1 : 10000;
     var lotSize    = parseFloat((targetLoss / (slDist * multiplier)).toFixed(4));
     if (!lotSize || lotSize <= 0) lotSize = 0.01;
 
-    // TP is 3x further — returns 30% of allocation when hit
     var tp = tradeType === 'BUY' ? entryPrice + tpDist : entryPrice - tpDist;
     var sl = tradeType === 'BUY' ? entryPrice - slDist : entryPrice + slDist;
 
