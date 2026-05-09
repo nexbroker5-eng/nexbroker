@@ -214,8 +214,8 @@
         '<div class="wr-bar"><div class="wr-fill" style="width:'+t.winRate+'%"></div></div>'+
         '<div style="font-size:.73rem;color:var(--text-muted);margin-bottom:12px;">'+t.followers.toLocaleString()+' followers</div>'+
         (isActive
-          ? '<button class="copy-btn" style="background:rgba(231,76,60,.1);color:#e74c3c;border:1px solid rgba(231,76,60,.25);" onclick="promptStopCopy(''+t.name.replace(/'/g,"\'")+'')">Stop Copying</button>'
-          : '<button class="copy-btn" onclick="handleCopy(''+t.name.replace(/'/g,"\'")+'')">Copy Trader</button>'
+          ? '<button class="copy-btn" style="background:rgba(231,76,60,.1);color:#e74c3c;border:1px solid rgba(231,76,60,.25);" data-name="'+t.name+'" onclick="promptStopCopy(this.dataset.name)">Stop Copying</button>'
+          : '<button class="copy-btn" data-name="'+t.name+'" onclick="handleCopy(this.dataset.name)">Copy Trader</button>'
         )+
       '</div>';
     }).join('');
@@ -232,7 +232,7 @@
       return '<div class="active-copy-card">'+
         '<div class="active-copy-info"><div class="name">'+name+'</div><div class="meta">Allocated: '+fmtCurrency(c.allocation)+'</div></div>'+
         '<div class="active-copy-pnl '+pnlClass+'">'+(pnl>=0?'+':'')+fmtCurrency(pnl)+'</div>'+
-        '<button class="stop-copy-btn" onclick="promptStopCopy(''+name.replace(/'/g,"\'")+'')">Stop</button>'+
+        '<button class="stop-copy-btn" data-name="'+name+'" onclick="promptStopCopy(this.dataset.name)">Stop</button>'+
       '</div>';
     }).join('');
   }

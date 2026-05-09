@@ -317,7 +317,7 @@
              : ALL_INSTRUMENTS;
     document.getElementById('assetGrid').innerHTML = list.map(function(i) {
       var p = prices[i.symbol] || i.defaultPrice;
-      return '<div class="asset-chip ' + (i.symbol === selectedSymbol ? 'active' : '') + '" onclick="selectAsset(\'' + i.symbol + '\')">' +
+      return '<div class="asset-chip ' + (i.symbol === selectedSymbol ? 'active' : '') + '" data-sym="'+i.symbol+'" onclick="selectAsset(this.dataset.sym)">' +
              '<div class="sym">' + i.symbol + '</div>' +
              '<div class="prc">' + fmtPrice(p, i.symbol) + '</div></div>';
     }).join('');
@@ -431,7 +431,7 @@
       var tpAmt=tpPnl!==null?'<span class="pnl-positive"> · +'+fmtCurrency(Math.abs(tpPnl))+'</span>':'';
       var slAmt=slPnl!==null?'<span class="pnl-negative"> · -'+fmtCurrency(Math.abs(slPnl))+'</span>':'';
       return '<div>'+
-        '<div class="mini-pos-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);" onclick="toggleMiniDetail(''+t.id+'')">'+
+        '<div class="mini-pos-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-lt);" data-tid="'+t.id+'" onclick="toggleMiniDetail(this.dataset.tid)">'+
           '<div style="display:flex;align-items:center;gap:8px;">'+
             '<svg width="14" height="14" id="arr_'+t.id+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>'+
             '<strong style="font-size:.85rem;">'+t.symbol+'</strong>'+
@@ -445,13 +445,18 @@
             '<div class="mini-pos-detail-item"><span class="lbl">Take Profit</span><span class="val" style="font-size:.82rem;">'+tpLvl+tpAmt+'</span></div>'+
             '<div class="mini-pos-detail-item"><span class="lbl">Stop Loss</span><span class="val" style="font-size:.82rem;">'+slLvl+slAmt+'</span></div>'+
           '</div>'+
-          '<button class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;" onclick="openTradeClose(''+t.id+'',''+t.symbol+'',''+t.type+'','+t.lotSize+','+t.entryPrice+','+curPrc+','+pnl+')">Close Position</button>'+
+          '<button class="btn btn-danger btn-sm" style="margin-top:10px;width:100%;" data-tid="'+t.id+'" data-sym="'+t.symbol+'" data-type="'+t.type+'" data-lot="'+t.lotSize+'" data-entry="'+t.entryPrice+'" data-cur="'+curPrc+'" data-pnl="'+pnl+'" onclick="openTradeCloseFromBtn(this)">Close Position</button>'+
         '</div>'+
       '</div>';
     }).join('');
   }
 
   var _tradeCloseData = null;
+  function openTradeCloseFromBtn(btn) {
+    openTradeClose(btn.dataset.tid, btn.dataset.sym, btn.dataset.type,
+      parseFloat(btn.dataset.lot), parseFloat(btn.dataset.entry),
+      parseFloat(btn.dataset.cur), parseFloat(btn.dataset.pnl));
+  }
   function openTradeClose(id,symbol,type,lot,entry,curPrc,pnl) {
     _tradeCloseData = { id:id, curPrc:curPrc, pnl:pnl };
     var pnlClass = pnl>=0?'pnl-positive':'pnl-negative';
